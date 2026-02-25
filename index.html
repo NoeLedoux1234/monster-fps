@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Monster FPS</title>
+  </head>
+  <body>
+    <div id="lobby">
+      <h1>MONSTER FPS</h1>
+      <p class="lobby-subtitle">Gun Game</p>
+      <div id="lobby-buttons">
+        <button id="btn-solo">Solo</button>
+        <button id="btn-create">Créer partie</button>
+        <button id="btn-join">Rejoindre</button>
+      </div>
+      <div id="join-form" style="display:none">
+        <input id="room-input" placeholder="Code de la room" maxlength="6" spellcheck="false" autocomplete="off" />
+        <button id="btn-connect">Connecter</button>
+      </div>
+      <div id="room-display" style="display:none">
+        <p>Code room : <span id="room-code"></span></p>
+        <p id="waiting-text">En attente d'un joueur...</p>
+      </div>
+      <p id="lobby-status"></p>
+    </div>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
