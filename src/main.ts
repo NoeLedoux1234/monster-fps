@@ -37,7 +37,28 @@ interface NetRestart {
   type: 'restart'
 }
 
-type NetMessage = NetState | NetShoot | NetHit | NetKill | NetRestart
+interface NetCustomize {
+  type: 'customize'
+  config: AvatarConfig
+}
+
+type NetMessage = NetState | NetShoot | NetHit | NetKill | NetRestart | NetCustomize
+
+// =============================================================
+//  AVATAR CONFIG
+// =============================================================
+type HornStyle = 'none' | 'short' | 'long' | 'curved' | 'oni'
+type FacePattern = 'none' | 'warpaint' | 'scars' | 'tribal' | 'kabuki' | 'skull'
+type HatStyle = 'none' | 'kabuto' | 'straw' | 'bandana' | 'oni-mask' | 'crown'
+
+interface AvatarConfig {
+  skinColor: number
+  bodyColor: number
+  eyeColor: number
+  hornStyle: HornStyle
+  facePattern: FacePattern
+  hat: HatStyle
+}
 
 let peer: Peer | null = null
 let conn: DataConnection | null = null
@@ -46,6 +67,39 @@ let remoteState: NetState | null = null
 let netSendTimer = 0
 let gameStarted = false
 let animating = false
+
+const DEFAULT_P1_CONFIG: AvatarConfig = {
+  skinColor: 0x4a3a2a,
+  bodyColor: 0x3498db,
+  eyeColor: 0xff1100,
+  hornStyle: 'short',
+  facePattern: 'none',
+  hat: 'none',
+}
+
+const DEFAULT_P2_CONFIG: AvatarConfig = {
+  skinColor: 0x4a3a2a,
+  bodyColor: 0xe74c3c,
+  eyeColor: 0xff1100,
+  hornStyle: 'short',
+  facePattern: 'none',
+  hat: 'none',
+}
+
+const AVATAR_STORAGE_KEY = 'monster-fps-avatar'
+
+function saveAvatarConfig(config: AvatarConfig) {
+  localStorage.setItem(AVATAR_STORAGE_KEY, JSON.stringify(config))
+}
+
+function loadAvatarConfig(): AvatarConfig {
+  const raw = localStorage.getItem(AVATAR_STORAGE_KEY)
+  if (!raw) return { ...DEFAULT_P1_CONFIG }
+  return { ...DEFAULT_P1_CONFIG, ...JSON.parse(raw) }
+}
+
+let p1Config = loadAvatarConfig()
+let p2Config: AvatarConfig = { ...DEFAULT_P2_CONFIG }
 
 // --- Scene ---
 type MapTheme = 'dark' | 'light'
@@ -1003,30 +1057,208 @@ bambooCluster(-16, -13, 3); bambooCluster(16, 13, 3)
 bambooCluster(-1, 13, 3); bambooCluster(1, -13, 3)
 
 // =============================================================
+//  AVATAR HELPERS
+// =============================================================
+function createFaceTexture(pattern: FacePattern, skinColor: number): THREE.CanvasTexture | null {
+  if (pattern === 'none') return null
+  const c = document.createElement('canvas')
+  c.width = 128; c.height = 128
+  const ctx = c.getContext('2d')!
+  const r = (skinColor >> 16) & 0xff
+  const g = (skinColor >> 8) & 0xff
+  const b = skinColor & 0xff
+  ctx.fillStyle = `rgb(${r},${g},${b})`
+  ctx.fillRect(0, 0, 128, 128)
+
+  switch (pattern) {
+    case 'warpaint':
+      ctx.fillStyle = 'rgba(180,20,20,0.7)'
+      ctx.fillRect(0, 40, 128, 16)
+      ctx.fillRect(0, 70, 128, 12)
+      ctx.fillStyle = 'rgba(40,40,40,0.4)'
+      ctx.fillRect(20, 56, 88, 4)
+      break
+    case 'scars':
+      ctx.strokeStyle = 'rgba(100,40,40,0.6)'
+      ctx.lineWidth = 3
+      ctx.beginPath(); ctx.moveTo(20, 20); ctx.lineTo(90, 100); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(100, 10); ctx.lineTo(50, 80); ctx.stroke()
+      ctx.strokeStyle = 'rgba(60,20,20,0.4)'
+      ctx.lineWidth = 5
+      ctx.beginPath(); ctx.moveTo(30, 30); ctx.lineTo(110, 110); ctx.stroke()
+      break
+    case 'tribal':
+      ctx.strokeStyle = 'rgba(255,255,255,0.6)'
+      ctx.lineWidth = 3
+      ctx.beginPath(); ctx.moveTo(64, 10); ctx.lineTo(40, 40); ctx.lineTo(88, 40); ctx.closePath(); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(64, 118); ctx.lineTo(40, 88); ctx.lineTo(88, 88); ctx.closePath(); ctx.stroke()
+      ctx.fillStyle = 'rgba(255,255,255,0.5)'
+      ctx.fillRect(10, 62, 108, 4)
+      for (let i = 0; i < 6; i++) ctx.fillRect(20 + i * 16, 50, 3, 28)
+      break
+    case 'kabuki':
+      ctx.fillStyle = 'rgba(255,255,255,0.7)'
+      ctx.beginPath(); ctx.ellipse(64, 64, 50, 55, 0, 0, Math.PI * 2); ctx.fill()
+      ctx.strokeStyle = 'rgba(200,0,0,0.8)'; ctx.lineWidth = 5
+      ctx.beginPath(); ctx.moveTo(20, 45); ctx.quadraticCurveTo(50, 30, 55, 50); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(108, 45); ctx.quadraticCurveTo(78, 30, 73, 50); ctx.stroke()
+      ctx.fillStyle = 'rgba(180,0,0,0.8)'
+      ctx.beginPath(); ctx.ellipse(64, 90, 12, 6, 0, 0, Math.PI * 2); ctx.fill()
+      break
+    case 'skull':
+      ctx.fillStyle = 'rgba(0,0,0,0.6)'
+      ctx.beginPath(); ctx.ellipse(40, 45, 14, 16, 0, 0, Math.PI * 2); ctx.fill()
+      ctx.beginPath(); ctx.ellipse(88, 45, 14, 16, 0, 0, Math.PI * 2); ctx.fill()
+      ctx.beginPath(); ctx.moveTo(58, 65); ctx.lineTo(64, 55); ctx.lineTo(70, 65); ctx.closePath(); ctx.fill()
+      ctx.fillStyle = 'rgba(200,200,180,0.6)'
+      for (let i = 0; i < 6; i++) ctx.fillRect(38 + i * 9, 80, 7, 14)
+      ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 1
+      for (let i = 0; i < 6; i++) ctx.strokeRect(38 + i * 9, 80, 7, 14)
+      break
+  }
+  return new THREE.CanvasTexture(c)
+}
+
+function addHorns(group: THREE.Group, style: HornStyle, hornMat: THREE.MeshStandardMaterial) {
+  if (style === 'none') return
+  const configs: Record<string, { r: number; h: number; posY: number; spread: number; rotZ: number; rotX: number }> = {
+    short:  { r: 0.04, h: 0.25, posY: 1.82, spread: 0.20, rotZ: 0.3, rotX: 0 },
+    long:   { r: 0.035, h: 0.5, posY: 1.92, spread: 0.20, rotZ: 0.2, rotX: 0 },
+    curved: { r: 0.04, h: 0.35, posY: 1.85, spread: 0.22, rotZ: 0.4, rotX: -0.4 },
+    oni:    { r: 0.08, h: 0.45, posY: 1.90, spread: 0.25, rotZ: 0.35, rotX: 0 },
+  }
+  const c = configs[style]
+  const lH = new THREE.Mesh(new THREE.ConeGeometry(c.r, c.h, 6), hornMat)
+  lH.position.set(-c.spread, c.posY, -0.05); lH.rotation.set(c.rotX, 0, c.rotZ); group.add(lH)
+  const rH = new THREE.Mesh(new THREE.ConeGeometry(c.r, c.h, 6), hornMat)
+  rH.position.set(c.spread, c.posY, -0.05); rH.rotation.set(c.rotX, 0, -c.rotZ); group.add(rH)
+}
+
+function addHat(group: THREE.Group, style: HatStyle) {
+  if (style === 'none') return
+  const hg = new THREE.Group()
+  hg.name = 'hat'
+
+  switch (style) {
+    case 'kabuto': {
+      const dome = new THREE.Mesh(
+        new THREE.SphereGeometry(0.3, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+        new THREE.MeshStandardMaterial({ color: 0x2a2a2a, metalness: 0.7, roughness: 0.3 })
+      )
+      dome.position.y = 1.7; hg.add(dome)
+      const visor = new THREE.Mesh(
+        new THREE.BoxGeometry(0.7, 0.08, 0.3),
+        new THREE.MeshStandardMaterial({ color: 0x2a2a2a, metalness: 0.6 })
+      )
+      visor.position.set(0, 1.62, -0.15); visor.rotation.x = 0.15; hg.add(visor)
+      const crest = new THREE.Mesh(
+        new THREE.ConeGeometry(0.02, 0.3, 4),
+        new THREE.MeshStandardMaterial({ color: 0xc8a820, metalness: 0.8 })
+      )
+      crest.position.set(0, 2.0, -0.05); hg.add(crest)
+      const flapMat = new THREE.MeshStandardMaterial({ color: 0x3a2a1a })
+      const fg = new THREE.BoxGeometry(0.12, 0.25, 0.08)
+      const lf = new THREE.Mesh(fg, flapMat); lf.position.set(-0.3, 1.55, 0.05); lf.rotation.z = -0.2; hg.add(lf)
+      const rf = new THREE.Mesh(fg, flapMat); rf.position.set(0.3, 1.55, 0.05); rf.rotation.z = 0.2; hg.add(rf)
+      break
+    }
+    case 'straw': {
+      const hat = new THREE.Mesh(
+        new THREE.ConeGeometry(0.5, 0.3, 16),
+        new THREE.MeshStandardMaterial({ color: 0xd4b88c, roughness: 0.95 })
+      )
+      hat.position.y = 1.85; hg.add(hat)
+      const brim = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.5, 0.55, 0.03, 16),
+        new THREE.MeshStandardMaterial({ color: 0xc4a87c, roughness: 0.95 })
+      )
+      brim.position.y = 1.72; hg.add(brim)
+      break
+    }
+    case 'bandana': {
+      const band = new THREE.Mesh(
+        new THREE.TorusGeometry(0.27, 0.04, 6, 16),
+        new THREE.MeshStandardMaterial({ color: 0xcc2222, roughness: 0.9 })
+      )
+      band.position.y = 1.6; band.rotation.x = Math.PI / 2; hg.add(band)
+      const tail = new THREE.Mesh(
+        new THREE.BoxGeometry(0.08, 0.2, 0.02),
+        new THREE.MeshStandardMaterial({ color: 0xcc2222, roughness: 0.9 })
+      )
+      tail.position.set(0, 1.5, 0.3); tail.rotation.x = 0.3; hg.add(tail)
+      break
+    }
+    case 'oni-mask': {
+      const mask = new THREE.Mesh(
+        new THREE.SphereGeometry(0.28, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+        new THREE.MeshStandardMaterial({ color: 0xcc3333, roughness: 0.8 })
+      )
+      mask.position.set(0, 1.45, -0.15); mask.rotation.x = Math.PI; hg.add(mask)
+      const brow = new THREE.Mesh(
+        new THREE.BoxGeometry(0.5, 0.06, 0.1),
+        new THREE.MeshStandardMaterial({ color: 0xaa2222 })
+      )
+      brow.position.set(0, 1.52, -0.22); hg.add(brow)
+      const mhMat = new THREE.MeshStandardMaterial({ color: 0xddddaa, roughness: 0.6 })
+      const lmh = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.2, 5), mhMat)
+      lmh.position.set(-0.18, 1.6, -0.18); lmh.rotation.z = 0.3; hg.add(lmh)
+      const rmh = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.2, 5), mhMat)
+      rmh.position.set(0.18, 1.6, -0.18); rmh.rotation.z = -0.3; hg.add(rmh)
+      break
+    }
+    case 'crown': {
+      const bandMat = new THREE.MeshStandardMaterial({ color: 0xc8a820, metalness: 0.8, roughness: 0.2 })
+      const crBand = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.27, 0.12, 12, 1, true), bandMat)
+      crBand.position.y = 1.74; hg.add(crBand)
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2
+        const pt = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.12, 4), bandMat)
+        pt.position.set(Math.sin(a) * 0.27, 1.86, Math.cos(a) * 0.27); hg.add(pt)
+      }
+      const gemMat = new THREE.MeshStandardMaterial({ color: 0xff0044, emissive: 0x880022 })
+      for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * Math.PI * 2 + Math.PI / 4
+        const gem = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), gemMat)
+        gem.position.set(Math.sin(a) * 0.28, 1.74, Math.cos(a) * 0.28); hg.add(gem)
+      }
+      break
+    }
+  }
+  group.add(hg)
+}
+
+// =============================================================
 //  AVATAR
 // =============================================================
 const originalColors = new Map<THREE.MeshStandardMaterial, number>()
 
-function createAvatar(color: number, layerNum: number) {
+function createAvatar(config: AvatarConfig, layerNum: number, targetScene?: THREE.Scene) {
+  const sc = targetScene ?? scene
   const group = new THREE.Group()
-  const darkSkin = 0x4a3a2a
+  const { skinColor, bodyColor, eyeColor } = config
   const fleshRot = 0x6b4a3a
-  function skin() { const m = new THREE.MeshStandardMaterial({ color: darkSkin, roughness: 0.95 }); originalColors.set(m, darkSkin); return m }
-  function body() { const m = new THREE.MeshStandardMaterial({ color, roughness: 0.9 }); originalColors.set(m, color); return m }
+
+  function skin() { const m = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.95 }); originalColors.set(m, skinColor); return m }
+  function body() { const m = new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.9 }); originalColors.set(m, bodyColor); return m }
   function legMat() { const m = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.95 }); originalColors.set(m, 0x1a1a1a); return m }
 
-  // --- Monstrous head ---
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.45, 0.45), skin())
+  // --- Round head ---
+  const faceTex = createFaceTexture(config.facePattern, skinColor)
+  const headMat = faceTex
+    ? new THREE.MeshStandardMaterial({ map: faceTex, roughness: 0.95 })
+    : skin()
+  if (faceTex) originalColors.set(headMat as THREE.MeshStandardMaterial, skinColor)
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.25, 16, 16), headMat)
   head.position.y = 1.52; head.name = 'head'; group.add(head)
 
   // Glowing eyes
-  const eyeMat = new THREE.MeshBasicMaterial({ color: 0xff1100 })
+  const eyeMat = new THREE.MeshBasicMaterial({ color: eyeColor })
   const eyeGeo = new THREE.SphereGeometry(0.06, 6, 6)
   const lEye = new THREE.Mesh(eyeGeo, eyeMat); lEye.position.set(-0.12, 1.56, -0.2); group.add(lEye)
   const rEye = new THREE.Mesh(eyeGeo, eyeMat); rEye.position.set(0.12, 1.56, -0.2); group.add(rEye)
 
   // Eye glow light
-  const eyeGlow = new THREE.PointLight(0xff1100, 0.3, 3)
+  const eyeGlow = new THREE.PointLight(eyeColor, 0.3, 3)
   eyeGlow.position.set(0, 1.56, -0.25); group.add(eyeGlow)
 
   // Jaw / mouth
@@ -1048,10 +1280,7 @@ function createAvatar(color: number, layerNum: number) {
   // Horns
   const hornMat = new THREE.MeshStandardMaterial({ color: 0x2a1a0a, roughness: 0.7 })
   originalColors.set(hornMat, 0x2a1a0a)
-  const lHorn = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.25, 6), hornMat)
-  lHorn.position.set(-0.2, 1.82, -0.05); lHorn.rotation.z = 0.3; group.add(lHorn)
-  const rHorn = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.25, 6), hornMat)
-  rHorn.position.set(0.2, 1.82, -0.05); rHorn.rotation.z = -0.3; group.add(rHorn)
+  addHorns(group, config.hornStyle, hornMat)
 
   // --- Grotesque torso ---
   const torso = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.6, 0.35), body())
@@ -1075,7 +1304,7 @@ function createAvatar(color: number, layerNum: number) {
     group.add(bump)
   }
 
-  // --- Arms (elongated, claw-like) ---
+  // --- Arms ---
   const armGeo = new THREE.BoxGeometry(0.16, 0.6, 0.18)
   const lArm = new THREE.Mesh(armGeo, skin()); lArm.position.set(-0.36, 1.0, 0); lArm.name = 'arm'; group.add(lArm)
   const rArm = new THREE.Mesh(armGeo, skin()); rArm.position.set(0.36, 1.0, 0); rArm.name = 'arm'; group.add(rArm)
@@ -1092,21 +1321,36 @@ function createAvatar(color: number, layerNum: number) {
     }
   }
 
-  // --- Legs (bulky, monster-like) ---
+  // --- Legs ---
   const legGeo = new THREE.BoxGeometry(0.22, 0.55, 0.28)
   const lLeg = new THREE.Mesh(legGeo, legMat()); lLeg.position.set(-0.14, 0.48, 0); lLeg.name = 'leg'; group.add(lLeg)
   const rLeg = new THREE.Mesh(legGeo, legMat()); rLeg.position.set(0.14, 0.48, 0); rLeg.name = 'leg'; group.add(rLeg)
+
+  // --- Hat ---
+  addHat(group, config.hat)
 
   group.traverse(obj => {
     obj.layers.set(layerNum)
     if (obj instanceof THREE.Mesh) { obj.castShadow = true; obj.receiveShadow = true }
   })
-  scene.add(group)
+  sc.add(group)
   return group
 }
 
-const p1Body = createAvatar(0x3498db, 1)
-const p2Body = createAvatar(0xe74c3c, 2)
+function rebuildAvatar(player: PlayerState, config: AvatarConfig, layerNum: number) {
+  const old = player.body
+  old.traverse(obj => {
+    if (obj instanceof THREE.Mesh) {
+      const mat = obj.material
+      if (mat instanceof THREE.MeshStandardMaterial) originalColors.delete(mat)
+    }
+  })
+  scene.remove(old)
+  player.body = createAvatar(config, layerNum)
+}
+
+let p1Body = createAvatar(p1Config, 1)
+let p2Body = createAvatar(p2Config, 2)
 
 // --- Cameras ---
 const camera1 = new THREE.PerspectiveCamera(80, 1, 0.1, 200)
@@ -2889,6 +3133,13 @@ function handleNetMessage(msg: NetMessage) {
       restartGame()
       break
     }
+
+    case 'customize': {
+      // Remote sent their avatar config — rebuild player2 with it
+      p2Config = { ...DEFAULT_P2_CONFIG, ...msg.config }
+      rebuildAvatar(player2, p2Config, 2)
+      break
+    }
   }
 }
 
@@ -2949,6 +3200,191 @@ const lobbyStatus = document.getElementById('lobby-status')!
 uiDiv.style.display = 'none'
 legend.style.display = 'none'
 renderer.domElement.style.display = 'none'
+
+// =============================================================
+//  CUSTOMIZATION PANEL
+// =============================================================
+const customizePanel = document.getElementById('customize-panel')!
+const btnCustomize = document.getElementById('btn-customize')!
+const btnCustomizeClose = document.getElementById('btn-customize-close')!
+const previewCanvas = document.getElementById('preview-canvas') as HTMLCanvasElement
+
+// Preview renderer
+const prevRenderer = new THREE.WebGLRenderer({ canvas: previewCanvas, alpha: true, antialias: true })
+prevRenderer.setSize(280, 420)
+prevRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+
+const prevScene = new THREE.Scene()
+prevScene.add(new THREE.AmbientLight(0xffffff, 0.5))
+const prevDirLight = new THREE.DirectionalLight(0xffeedd, 1.0)
+prevDirLight.position.set(3, 5, 4)
+prevScene.add(prevDirLight)
+
+const prevCamera = new THREE.PerspectiveCamera(45, 280 / 420, 0.1, 50)
+prevCamera.position.set(0, 1.2, 3.2)
+prevCamera.lookAt(0, 1.0, 0)
+
+let previewAvatar: THREE.Group | null = null
+let previewOpen = false
+let previewRafId = 0
+
+function buildPreviewAvatar() {
+  if (previewAvatar) {
+    previewAvatar.traverse(obj => {
+      if (obj instanceof THREE.Mesh) {
+        const mat = obj.material
+        if (mat instanceof THREE.MeshStandardMaterial) originalColors.delete(mat)
+      }
+    })
+    prevScene.remove(previewAvatar)
+  }
+  previewAvatar = createAvatar(p1Config, 0, prevScene)
+}
+
+function previewLoop() {
+  if (!previewOpen) return
+  previewRafId = requestAnimationFrame(previewLoop)
+  if (previewAvatar) previewAvatar.rotation.y += 0.01
+  prevRenderer.render(prevScene, prevCamera)
+}
+
+function openCustomizePanel() {
+  customizePanel.classList.remove('hidden')
+  previewOpen = true
+  buildPreviewAvatar()
+  updateCustomizeUI()
+  previewLoop()
+}
+
+function closeCustomizePanel() {
+  customizePanel.classList.add('hidden')
+  previewOpen = false
+  cancelAnimationFrame(previewRafId)
+  saveAvatarConfig(p1Config)
+}
+
+btnCustomize.addEventListener('click', openCustomizePanel)
+btnCustomizeClose.addEventListener('click', closeCustomizePanel)
+
+// Color presets
+const SKIN_COLORS = [
+  { color: 0x4a3a2a, label: 'Sombre' },
+  { color: 0x8d6e4a, label: 'Brun' },
+  { color: 0x6b4a3a, label: 'Rouille' },
+  { color: 0x2d1f14, label: 'Ebene' },
+  { color: 0x7a8a5a, label: 'Zombie' },
+  { color: 0x5a4a6a, label: 'Violet' },
+  { color: 0x8a3a3a, label: 'Sang' },
+  { color: 0x4a5a6a, label: 'Gris' },
+]
+
+const EYE_COLORS = [
+  { color: 0xff1100, label: 'Rouge' },
+  { color: 0x00ff44, label: 'Vert' },
+  { color: 0x4488ff, label: 'Bleu' },
+  { color: 0xff00ff, label: 'Violet' },
+  { color: 0xffaa00, label: 'Orange' },
+  { color: 0xffffff, label: 'Blanc' },
+]
+
+const BODY_COLORS = [
+  { color: 0x3498db, label: 'Bleu' },
+  { color: 0xe74c3c, label: 'Rouge' },
+  { color: 0x2ecc71, label: 'Vert' },
+  { color: 0xf39c12, label: 'Or' },
+  { color: 0x9b59b6, label: 'Violet' },
+  { color: 0x1abc9c, label: 'Turquoise' },
+  { color: 0xe67e22, label: 'Orange' },
+  { color: 0x2c3e50, label: 'Sombre' },
+]
+
+const FACE_PATTERNS: { value: FacePattern; label: string }[] = [
+  { value: 'none', label: 'Aucun' },
+  { value: 'warpaint', label: 'Peinture' },
+  { value: 'scars', label: 'Cicatrices' },
+  { value: 'tribal', label: 'Tribal' },
+  { value: 'kabuki', label: 'Kabuki' },
+  { value: 'skull', label: 'Crane' },
+]
+
+const HORN_STYLES: { value: HornStyle; label: string }[] = [
+  { value: 'none', label: 'Aucune' },
+  { value: 'short', label: 'Courtes' },
+  { value: 'long', label: 'Longues' },
+  { value: 'curved', label: 'Courbees' },
+  { value: 'oni', label: 'Oni' },
+]
+
+const HAT_STYLES: { value: HatStyle; label: string }[] = [
+  { value: 'none', label: 'Aucune' },
+  { value: 'kabuto', label: 'Kabuto' },
+  { value: 'straw', label: 'Paille' },
+  { value: 'bandana', label: 'Bandana' },
+  { value: 'oni-mask', label: 'Masque Oni' },
+  { value: 'crown', label: 'Couronne' },
+]
+
+// Build panel contents
+function hexToCSS(hex: number): string {
+  return '#' + hex.toString(16).padStart(6, '0')
+}
+
+function populateColorPanel(panelId: string, colors: { color: number; label: string }[], key: 'skinColor' | 'bodyColor' | 'eyeColor') {
+  const panel = document.getElementById(panelId)!
+  panel.innerHTML = ''
+  for (const c of colors) {
+    const swatch = document.createElement('div')
+    swatch.className = 'color-swatch'
+    swatch.style.background = hexToCSS(c.color)
+    swatch.title = c.label
+    if (p1Config[key] === c.color) swatch.classList.add('selected')
+    swatch.addEventListener('click', () => {
+      p1Config[key] = c.color
+      panel.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('selected'))
+      swatch.classList.add('selected')
+      buildPreviewAvatar()
+    })
+    panel.appendChild(swatch)
+  }
+}
+
+function populateItemPanel(panelId: string, items: { value: string; label: string }[], key: 'facePattern' | 'hornStyle' | 'hat') {
+  const panel = document.getElementById(panelId)!
+  panel.innerHTML = ''
+  for (const item of items) {
+    const btn = document.createElement('button')
+    btn.className = 'item-btn'
+    btn.textContent = item.label
+    if (p1Config[key] === item.value) btn.classList.add('selected')
+    btn.addEventListener('click', () => {
+      (p1Config as unknown as Record<string, string>)[key] = item.value
+      panel.querySelectorAll('.item-btn').forEach(b => b.classList.remove('selected'))
+      btn.classList.add('selected')
+      buildPreviewAvatar()
+    })
+    panel.appendChild(btn)
+  }
+}
+
+function updateCustomizeUI() {
+  populateColorPanel('tp-skin', SKIN_COLORS, 'skinColor')
+  populateColorPanel('tp-eyes', EYE_COLORS, 'eyeColor')
+  populateColorPanel('tp-body', BODY_COLORS, 'bodyColor')
+  populateItemPanel('tp-face', FACE_PATTERNS, 'facePattern')
+  populateItemPanel('tp-horns', HORN_STYLES, 'hornStyle')
+  populateItemPanel('tp-hat', HAT_STYLES, 'hat')
+}
+
+// Tab switching
+document.querySelectorAll('.ctab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.ctab').forEach(t => t.classList.remove('active'))
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'))
+    tab.classList.add('active')
+    const tabId = (tab as HTMLElement).dataset.tab!
+    document.getElementById(`tp-${tabId}`)!.classList.add('active')
+  })
+})
 
 function applyMapTheme(theme: MapTheme) {
   if (theme === 'light') {
@@ -3011,6 +3447,16 @@ function startGame(mode: GameMode) {
   }
 
   applyMapTheme(selectedMap)
+
+  // Apply avatar configs
+  p1Config = loadAvatarConfig()
+  rebuildAvatar(player1, p1Config, 1)
+  rebuildAvatar(player2, p2Config, 2)
+
+  // Send config to remote
+  if (isMultiplayer) {
+    sendNet({ type: 'customize', config: p1Config })
+  }
 
   // Reset spawn
   const s1 = randomSpawn()

@@ -14,10 +14,33 @@
         <button id="btn-map-dark" class="map-btn selected">Sombre</button>
         <button id="btn-map-light" class="map-btn">Eclairee</button>
       </div>
+      <button id="btn-customize" class="lobby-btn">Personnaliser</button>
       <div id="lobby-buttons">
         <button id="btn-solo">Solo</button>
         <button id="btn-create">Créer partie</button>
         <button id="btn-join">Rejoindre</button>
+      </div>
+      <div id="customize-panel" class="hidden">
+        <div class="customize-layout">
+          <canvas id="preview-canvas" width="280" height="420"></canvas>
+          <div class="customize-right">
+            <div class="customize-tabs">
+              <button class="ctab active" data-tab="skin">Peau</button>
+              <button class="ctab" data-tab="eyes">Yeux</button>
+              <button class="ctab" data-tab="face">Visage</button>
+              <button class="ctab" data-tab="horns">Cornes</button>
+              <button class="ctab" data-tab="hat">Coiffe</button>
+              <button class="ctab" data-tab="body">Corps</button>
+            </div>
+            <div class="tab-panel active" id="tp-skin"></div>
+            <div class="tab-panel" id="tp-eyes"></div>
+            <div class="tab-panel" id="tp-face"></div>
+            <div class="tab-panel" id="tp-horns"></div>
+            <div class="tab-panel" id="tp-hat"></div>
+            <div class="tab-panel" id="tp-body"></div>
+          </div>
+        </div>
+        <button id="btn-customize-close" class="pause-btn">Valider</button>
       </div>
       <div id="join-form" style="display:none">
         <input id="room-input" placeholder="Code de la room" maxlength="6" spellcheck="false" autocomplete="off" />
