@@ -2441,6 +2441,18 @@ function startGame(mode: GameMode) {
   isMultiplayer = mode !== 'solo'
   gameStarted = true
 
+  // Reset ALL game state
+  gamePaused = false
+  gameOver = false
+  killCamActive = false
+  killCamTimer = 0
+  killCamKiller = null
+  killCamVictim = null
+  mouseDown = false
+  isADS = false
+  for (const k in keys) keys[k] = false
+  pauseMenu.classList.remove('visible')
+
   lobbyEl.classList.add('hidden')
   uiDiv.style.display = 'flex'
   legend.style.display = 'flex'
@@ -2456,17 +2468,17 @@ function startGame(mode: GameMode) {
 
   applyMapTheme(selectedMap)
 
-  gamePaused = false
-  pauseMenu.classList.remove('visible')
-
   // Reset spawn
   const s1 = randomSpawn()
   player1.x = s1.x; player1.z = s1.z; player1.angle = s1.angle
   const s2 = randomSpawn(player1)
   player2.x = s2.x; player2.z = s2.z; player2.angle = s2.angle
 
+  // Blur any focused button then auto-request pointer lock
+  ;(document.activeElement as HTMLElement)?.blur()
   clock.getDelta() // reset clock
   if (!animating) { animating = true; animate() }
+  setTimeout(() => renderer.domElement.requestPointerLock(), 100)
 }
 
 function createRoom() {
