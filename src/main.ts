@@ -2653,17 +2653,21 @@ function animate() {
     if (tracerTimer <= 0 && tracerMesh) { scene.remove(tracerMesh); tracerMesh.geometry.dispose(); tracerMesh = null }
   }
 
-  // Horror: flicker streetlights
+  // Flicker lanterns
   for (let i = 0; i < flickerLights.length; i++) {
     const fl = flickerLights[i]
-    const bulb = flickerBulbs[i]
     const flicker = Math.random()
     if (flicker < 0.03) {
       fl.intensity = 0
-      ;(bulb.material as THREE.MeshBasicMaterial).opacity = 0.1
     } else {
-      fl.intensity = 0.15 + Math.sin(t * 3 + i * 2.5) * 0.1 + Math.random() * 0.08
-      ;(bulb.material as THREE.MeshBasicMaterial).opacity = 0.5 + Math.sin(t * 3 + i * 2.5) * 0.3
+      fl.intensity = 0.2 + Math.sin(t * 3 + i * 2.5) * 0.15 + Math.random() * 0.08
+    }
+    const bulb = flickerBulbs[i]
+    if (bulb) {
+      const mat = bulb.material as THREE.Material
+      if ('opacity' in mat) {
+        (mat as THREE.MeshStandardMaterial).opacity = flicker < 0.03 ? 0.3 : 0.6 + Math.sin(t * 3 + i * 2.5) * 0.25
+      }
     }
   }
 
