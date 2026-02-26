@@ -45,6 +45,7 @@ let isMultiplayer = false
 let remoteState: NetState | null = null
 let netSendTimer = 0
 let gameStarted = false
+let animating = false
 
 // --- Scene ---
 type MapTheme = 'dark' | 'light'
@@ -146,10 +147,10 @@ const BULLET_DROP = 12
 const BULLET_MAX_AGE = 3
 
 // =============================================================
-//  MAP
+//  MAP — Samurai Temple
 // =============================================================
-const ARENA_W = 60
-const ARENA_D = 40
+const ARENA_W = 36
+const ARENA_D = 28
 const halfW = ARENA_W / 2
 const halfD = ARENA_D / 2
 const WH = 4
@@ -169,99 +170,114 @@ function makeTex(w: number, h: number, draw: (ctx: CanvasRenderingContext2D) => 
   return t
 }
 
-const brickTex = makeTex(128, 128, ctx => {
-  ctx.fillStyle = '#a0623a'
+// Dark wood (temples)
+const darkWoodTex = makeTex(128, 128, ctx => {
+  ctx.fillStyle = '#3a2518'
+  ctx.fillRect(0, 0, 128, 128)
+  for (let y = 0; y < 128; y += 2) {
+    const v = 40 + Math.random() * 25
+    ctx.fillStyle = `rgba(${v + 10},${v},${v - 5},0.3)`
+    ctx.fillRect(0, y, 128, 2)
+  }
+  for (let i = 0; i < 200; i++) {
+    ctx.fillStyle = `rgba(${30 + Math.random() * 20},${15 + Math.random() * 15},${10 + Math.random() * 10},0.15)`
+    ctx.fillRect(Math.random() * 128, Math.random() * 128, 1, 1)
+  }
+})
+
+// Bamboo
+const bambooTex = makeTex(64, 128, ctx => {
+  ctx.fillStyle = '#6b8e4e'
+  ctx.fillRect(0, 0, 64, 128)
+  for (let y = 0; y < 128; y += 16) {
+    ctx.fillStyle = 'rgba(80,110,50,0.4)'
+    ctx.fillRect(0, y, 64, 2)
+  }
+  for (let i = 0; i < 100; i++) {
+    ctx.fillStyle = `rgba(${90 + Math.random() * 30},${120 + Math.random() * 30},${60 + Math.random() * 20},0.12)`
+    ctx.fillRect(Math.random() * 64, Math.random() * 128, 1, 1)
+  }
+})
+
+// Stone (walls, pavement)
+const stoneTex = makeTex(128, 128, ctx => {
+  ctx.fillStyle = '#8a8580'
   ctx.fillRect(0, 0, 128, 128)
   for (let row = 0; row < 8; row++) {
     const y = row * 16
-    ctx.fillStyle = '#7a4a2a'
-    ctx.fillRect(0, y, 128, 2)
-    const off = (row % 2) * 32
-    for (let x = off; x < 128; x += 64) ctx.fillRect(x, y, 2, 16)
+    ctx.fillStyle = 'rgba(60,58,55,0.3)'
+    ctx.fillRect(0, y, 128, 1)
+    const off = (row % 2) * 24
+    for (let x = off; x < 128; x += 48) ctx.fillRect(x, y, 1, 16)
   }
-  for (let i = 0; i < 300; i++) {
-    ctx.fillStyle = `rgba(${100 + Math.random() * 80},${40 + Math.random() * 40},${20 + Math.random() * 30},0.2)`
+  for (let i = 0; i < 400; i++) {
+    const g = 100 + Math.random() * 50
+    ctx.fillStyle = `rgba(${g},${g - 2},${g - 5},0.1)`
     ctx.fillRect(Math.random() * 128, Math.random() * 128, 2, 2)
   }
 })
 
-const concreteTex = makeTex(128, 128, ctx => {
-  ctx.fillStyle = '#888888'
-  ctx.fillRect(0, 0, 128, 128)
-  for (let i = 0; i < 500; i++) {
-    const g = 100 + Math.random() * 60
-    ctx.fillStyle = `rgba(${g},${g},${g},0.12)`
-    ctx.fillRect(Math.random() * 128, Math.random() * 128, 1 + Math.random() * 3, 1 + Math.random() * 3)
-  }
-  ctx.strokeStyle = 'rgba(60,60,60,0.15)'
-  for (let i = 0; i < 3; i++) {
-    ctx.beginPath()
-    ctx.moveTo(Math.random() * 128, Math.random() * 128)
-    ctx.lineTo(Math.random() * 128, Math.random() * 128)
-    ctx.stroke()
-  }
-})
-
-const woodTex = makeTex(64, 64, ctx => {
-  ctx.fillStyle = '#a08060'
-  ctx.fillRect(0, 0, 64, 64)
-  for (let y = 0; y < 64; y += 3) {
-    ctx.fillStyle = `rgba(${80 + Math.random() * 40},${50 + Math.random() * 30},${30 + Math.random() * 20},0.25)`
-    ctx.fillRect(0, y, 64, 2)
-  }
-})
-
-const metalTex = makeTex(64, 64, ctx => {
-  ctx.fillStyle = '#5a6a7a'
-  ctx.fillRect(0, 0, 64, 64)
-  for (let y = 0; y < 64; y += 6) {
-    ctx.fillStyle = 'rgba(100,120,140,0.15)'
-    ctx.fillRect(0, y, 64, 1)
-  }
-  for (let i = 0; i < 80; i++) {
-    ctx.fillStyle = `rgba(${150 + Math.random() * 60},${150 + Math.random() * 60},${160 + Math.random() * 60},0.1)`
-    ctx.fillRect(Math.random() * 64, Math.random() * 64, 1, 1)
-  }
-})
-
-const floorTex = makeTex(256, 256, ctx => {
-  ctx.fillStyle = '#4a4a42'
+// Tatami floor
+const tatamiTex = makeTex(256, 256, ctx => {
+  ctx.fillStyle = '#c4b78e'
   ctx.fillRect(0, 0, 256, 256)
-  ctx.strokeStyle = 'rgba(60,60,55,0.4)'
+  ctx.strokeStyle = 'rgba(160,140,90,0.3)'
   ctx.lineWidth = 1
-  for (let x = 0; x <= 256; x += 32) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 256); ctx.stroke() }
-  for (let y = 0; y <= 256; y += 32) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(256, y); ctx.stroke() }
-  for (let i = 0; i < 800; i++) {
-    const g = 50 + Math.random() * 40
-    ctx.fillStyle = `rgba(${g},${g},${g - 5},0.08)`
-    ctx.fillRect(Math.random() * 256, Math.random() * 256, 1 + Math.random() * 2, 1 + Math.random() * 2)
+  for (let y = 0; y < 256; y += 3) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(256, y); ctx.stroke()
   }
+  ctx.strokeStyle = 'rgba(100,85,50,0.2)'
+  ctx.lineWidth = 2
+  for (let x = 0; x <= 256; x += 64) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 256); ctx.stroke() }
+  for (let y = 0; y <= 256; y += 64) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(256, y); ctx.stroke() }
 })
-floorTex.repeat.set(4, 3)
+tatamiTex.repeat.set(3, 2)
 
-const sandTex = makeTex(128, 128, ctx => {
-  ctx.fillStyle = '#b8a88a'
+// Gravel
+const gravelTex = makeTex(128, 128, ctx => {
+  ctx.fillStyle = '#d4cfc5'
   ctx.fillRect(0, 0, 128, 128)
-  for (let i = 0; i < 600; i++) {
-    const g = 150 + Math.random() * 50
-    ctx.fillStyle = `rgba(${g},${g - 15},${g - 35},0.12)`
-    ctx.fillRect(Math.random() * 128, Math.random() * 128, 1, 1)
+  for (let i = 0; i < 1200; i++) {
+    const g = 170 + Math.random() * 50
+    ctx.fillStyle = `rgba(${g},${g - 5},${g - 12},0.2)`
+    const s = 1 + Math.random() * 2
+    ctx.fillRect(Math.random() * 128, Math.random() * 128, s, s)
   }
 })
-sandTex.repeat.set(4, 3)
+gravelTex.repeat.set(3, 2)
 
-const matConcrete  = new THREE.MeshStandardMaterial({ map: concreteTex, color: 0xaaaaaa })
-const matConcreteD = new THREE.MeshStandardMaterial({ map: concreteTex, color: 0x777777 })
-const matBrick     = new THREE.MeshStandardMaterial({ map: brickTex })
-const matMetal     = new THREE.MeshStandardMaterial({ map: metalTex, metalness: 0.3, roughness: 0.7 })
-const matCrate     = new THREE.MeshStandardMaterial({ map: woodTex, color: 0xd4a860 })
-const matGreen     = new THREE.MeshStandardMaterial({ color: 0x3d6b1f, roughness: 0.9 })
-const matRed       = new THREE.MeshStandardMaterial({ color: 0xaa2222, roughness: 0.8 })
-const matBlue      = new THREE.MeshStandardMaterial({ color: 0x1a4a8a, roughness: 0.8 })
-const matSand      = new THREE.MeshStandardMaterial({ map: sandTex })
-const matDarkFloor = new THREE.MeshStandardMaterial({ map: floorTex })
+// Roof tiles
+const roofTex = makeTex(128, 64, ctx => {
+  ctx.fillStyle = '#2a2a2e'
+  ctx.fillRect(0, 0, 128, 64)
+  for (let row = 0; row < 4; row++) {
+    const y = row * 16
+    for (let x = (row % 2) * 8; x < 128; x += 16) {
+      ctx.fillStyle = `rgba(${35 + Math.random() * 15},${35 + Math.random() * 15},${40 + Math.random() * 15},0.8)`
+      ctx.fillRect(x, y, 15, 15)
+      ctx.fillStyle = 'rgba(20,20,25,0.4)'
+      ctx.fillRect(x, y + 14, 15, 2)
+    }
+  }
+})
 
-const floor = new THREE.Mesh(new THREE.PlaneGeometry(ARENA_W, ARENA_D), matSand)
+// Materials
+const matDarkWood  = new THREE.MeshStandardMaterial({ map: darkWoodTex, roughness: 0.85 })
+const matBamboo    = new THREE.MeshStandardMaterial({ map: bambooTex, roughness: 0.8 })
+const matStone     = new THREE.MeshStandardMaterial({ map: stoneTex, roughness: 0.9 })
+const matTatami    = new THREE.MeshStandardMaterial({ map: tatamiTex, roughness: 0.95 })
+const matGravel    = new THREE.MeshStandardMaterial({ map: gravelTex, roughness: 1 })
+const matRoof      = new THREE.MeshStandardMaterial({ map: roofTex, roughness: 0.7 })
+const matRedWood   = new THREE.MeshStandardMaterial({ color: 0x8b1a1a, roughness: 0.8 })
+const matGold      = new THREE.MeshStandardMaterial({ color: 0xc8a820, metalness: 0.4, roughness: 0.5 })
+const matLeaf      = new THREE.MeshStandardMaterial({ color: 0xcc3333, roughness: 0.9 })
+const matPine      = new THREE.MeshStandardMaterial({ color: 0x2d5a27, roughness: 0.9 })
+const matTrunk     = new THREE.MeshStandardMaterial({ color: 0x4a3828, roughness: 0.9 })
+const matWater     = new THREE.MeshStandardMaterial({ color: 0x3a6b7a, roughness: 0.2, metalness: 0.1, transparent: true, opacity: 0.7 })
+const matPaper     = new THREE.MeshStandardMaterial({ color: 0xf5e6c8, roughness: 0.95, transparent: true, opacity: 0.85 })
+
+// --- Floor ---
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(ARENA_W, ARENA_D), matGravel)
 floor.rotation.x = -Math.PI / 2
 floor.receiveShadow = true
 scene.add(floor)
@@ -273,9 +289,10 @@ function floorZone(w: number, d: number, x: number, z: number, mat: THREE.Materi
   m.receiveShadow = true
   scene.add(m)
 }
-floorZone(18, 16, -21, -8, matDarkFloor)
-floorZone(18, 16, 21, 8, matDarkFloor)
-floorZone(8, 14, 0, 0, matDarkFloor)
+
+// Tatami zones inside temples
+floorZone(10, 8, -12, -6, matTatami)
+floorZone(10, 8, 12, 6, matTatami)
 
 function wall(w: number, h: number, d: number, x: number, y: number, z: number, mat: THREE.Material) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat)
@@ -290,155 +307,200 @@ function wall(w: number, h: number, d: number, x: number, y: number, z: number, 
   })
 }
 
-function crate(x: number, z: number, size = 1.5) {
-  wall(size, size, size, x, size / 2, z, matCrate)
+// --- Prop functions ---
+function torii(x: number, z: number, rotY = 0) {
+  const g = new THREE.Group()
+  // Pillars
+  const pillarGeo = new THREE.CylinderGeometry(0.15, 0.18, 4.5, 8)
+  const lp = new THREE.Mesh(pillarGeo, matRedWood); lp.position.set(-1.2, 2.25, 0); g.add(lp)
+  const rp = new THREE.Mesh(pillarGeo, matRedWood); rp.position.set(1.2, 2.25, 0); g.add(rp)
+  // Top beam (kasagi)
+  const topBeam = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.2, 0.3), matRedWood)
+  topBeam.position.set(0, 4.5, 0); g.add(topBeam)
+  // Second beam (nuki)
+  const nuki = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.15, 0.2), matRedWood)
+  nuki.position.set(0, 3.6, 0); g.add(nuki)
+  // Gold cap
+  const cap = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.1, 0.4), matGold)
+  cap.position.set(0, 4.65, 0); g.add(cap)
+  g.position.set(x, 0, z)
+  g.rotation.y = rotY
+  scene.add(g)
 }
 
-function doubleCrate(x: number, z: number) {
-  wall(1.5, 1.5, 1.5, x, 0.75, z, matCrate)
-  wall(1.5, 1.5, 1.5, x, 2.25, z, matCrate)
+function lantern(x: number, z: number, h = 1.5) {
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, h, 6), matDarkWood)
+  pole.position.set(x, h / 2, z); scene.add(pole)
+  // Paper shade
+  const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.25, 0.4, 8), matPaper)
+  shade.position.set(x, h + 0.1, z); scene.add(shade)
+  // Warm light
+  const pl = new THREE.PointLight(0xffaa44, 0.4, 8)
+  pl.position.set(x, h + 0.1, z); scene.add(pl)
+  flickerLights.push(pl)
+  flickerBulbs.push(shade)
 }
 
-function barrel(x: number, z: number) {
-  const geo = new THREE.CylinderGeometry(0.5, 0.5, 1.2, 8)
-  const mesh = new THREE.Mesh(geo, matMetal)
-  mesh.position.set(x, 0.6, z)
-  mesh.castShadow = true
-  mesh.receiveShadow = true
+function bambooCluster(x: number, z: number, count = 5) {
+  for (let i = 0; i < count; i++) {
+    const h = 3 + Math.random() * 2.5
+    const ox = (Math.random() - 0.5) * 1.2
+    const oz = (Math.random() - 0.5) * 1.2
+    const stalk = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, h, 6), matBamboo)
+    stalk.position.set(x + ox, h / 2, z + oz)
+    scene.add(stalk)
+    // Leaves
+    const leafGeo = new THREE.SphereGeometry(0.4, 6, 4)
+    const leaf = new THREE.Mesh(leafGeo, matPine)
+    leaf.position.set(x + ox, h + 0.1, z + oz)
+    leaf.scale.set(1, 0.5, 1)
+    scene.add(leaf)
+  }
+}
+
+function sakuraTree(x: number, z: number) {
+  // Trunk
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.25, 3, 8), matTrunk)
+  trunk.position.set(x, 1.5, z); scene.add(trunk)
+  // Canopy (pink/red leaves)
+  const canopy = new THREE.Mesh(new THREE.SphereGeometry(2, 8, 6), matLeaf)
+  canopy.position.set(x, 3.8, z)
+  canopy.scale.set(1, 0.6, 1)
+  scene.add(canopy)
+}
+
+function stoneLanternProp(x: number, z: number) {
+  // Base
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.35, 0.3, 6), matStone)
+  base.position.set(x, 0.15, z); scene.add(base)
+  // Pillar
+  const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.8, 6), matStone)
+  pillar.position.set(x, 0.7, z); scene.add(pillar)
+  // Firebox
+  const box = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.4, 0.5), matStone)
+  box.position.set(x, 1.3, z); scene.add(box)
+  // Roof
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(0.45, 0.35, 4), matStone)
+  roof.position.set(x, 1.7, z); roof.rotation.y = Math.PI / 4; scene.add(roof)
+  // Glow
+  const gl = new THREE.PointLight(0xffcc66, 0.2, 5)
+  gl.position.set(x, 1.3, z); scene.add(gl)
+  flickerLights.push(gl)
+}
+
+function riceBale(x: number, z: number) {
+  const geo = new THREE.CylinderGeometry(0.4, 0.45, 0.8, 8)
+  const mesh = new THREE.Mesh(geo, matTatami)
+  mesh.position.set(x, 0.4, z)
+  mesh.castShadow = true; mesh.receiveShadow = true
   scene.add(mesh)
   wallMeshes.push(mesh)
-  obstacles.push({ min: new THREE.Vector2(x - 0.8, z - 0.8), max: new THREE.Vector2(x + 0.8, z + 0.8) })
+  obstacles.push({ min: new THREE.Vector2(x - 0.7, z - 0.7), max: new THREE.Vector2(x + 0.7, z + 0.7) })
+}
+
+function woodenBarricade(x: number, z: number, rotY = 0) {
+  const sb = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.9, 0.5), matDarkWood)
+  sb.position.set(x, 0.45, z); sb.rotation.y = rotY; scene.add(sb)
+  sb.castShadow = true; sb.receiveShadow = true
+  wallMeshes.push(sb)
+  const isRot = Math.abs(rotY) > 0.1
+  const hw = isRot ? 0.55 : 1.55
+  const hd = isRot ? 1.55 : 0.55
+  obstacles.push({ min: new THREE.Vector2(x - hw, z - hd), max: new THREE.Vector2(x + hw, z + hd) })
 }
 
 // --- Decorative props (no collision) ---
 const flickerLights: THREE.PointLight[] = []
 const flickerBulbs: THREE.Mesh[] = []
 
-function streetLight(x: number, z: number) {
-  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.06, 4.5, 6), matMetal)
-  pole.position.set(x, 2.25, z); scene.add(pole)
-  const arm = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.04, 0.04), matMetal)
-  arm.position.set(x + 0.5, 4.4, z); scene.add(arm)
-  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff2200, transparent: true, opacity: 0.8 }))
-  bulb.position.set(x + 1.1, 4.3, z); scene.add(bulb)
-  flickerBulbs.push(bulb)
-  const pl = new THREE.PointLight(0xff3311, 0.25, 10)
-  pl.position.set(x + 1, 4.2, z); scene.add(pl)
-  flickerLights.push(pl)
-}
+// ===========================
+//  MAP LAYOUT
+// ===========================
 
-function trafficCone(x: number, z: number) {
-  const cone = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.35, 8), new THREE.MeshStandardMaterial({ color: 0xff6600 }))
-  cone.position.set(x, 0.175, z); scene.add(cone)
-  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.06, 8), new THREE.MeshStandardMaterial({ color: 0xffffff }))
-  band.position.set(x, 0.22, z); scene.add(band)
-}
+// === PERIMETER (stone walls) ===
+wall(ARENA_W, WH, 0.5, 0, WH / 2, -halfD, matStone)
+wall(ARENA_W, WH, 0.5, 0, WH / 2, halfD, matStone)
+wall(0.5, WH, ARENA_D, -halfW, WH / 2, 0, matStone)
+wall(0.5, WH, ARENA_D, halfW, WH / 2, 0, matStone)
 
-function tireStack(x: number, z: number, count = 3) {
-  for (let i = 0; i < count; i++) {
-    const tire = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.1, 8, 12), new THREE.MeshStandardMaterial({ color: 0x1a1a1a }))
-    tire.position.set(x, 0.28 + i * 0.22, z)
-    tire.rotation.x = Math.PI / 2
-    scene.add(tire)
-  }
-}
+// === TEMPLE A (Northwest) ===
+wall(10, WH, 0.4, -12, WH / 2, -2, matDarkWood)   // South wall
+wall(10, WH, 0.4, -12, WH / 2, -10, matDarkWood)  // North wall
+wall(0.4, WH, 3, -7, WH / 2, -3.5, matDarkWood)   // East entry partial
+wall(0.4, WH, 3, -7, WH / 2, -8.5, matDarkWood)   // East entry partial
+// Roof
+const roofA = new THREE.Mesh(new THREE.BoxGeometry(11, 0.3, 9), matRoof)
+roofA.position.set(-12, WH + 0.15, -6); scene.add(roofA)
 
-function sandbags(x: number, z: number, rotY = 0) {
-  const sb = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.7, 0.7), new THREE.MeshStandardMaterial({ color: 0x9e8b6e, roughness: 1 }))
-  sb.position.set(x, 0.35, z); sb.rotation.y = rotY; scene.add(sb)
-  wallMeshes.push(sb)
-  const isRot = Math.abs(rotY) > 0.1
-  const hw = isRot ? 0.65 : 1.55
-  const hd = isRot ? 1.55 : 0.65
-  obstacles.push({ min: new THREE.Vector2(x - hw, z - hd), max: new THREE.Vector2(x + hw, z + hd) })
-}
+// === TEMPLE B (Southeast) ===
+wall(10, WH, 0.4, 12, WH / 2, 2, matDarkWood)
+wall(10, WH, 0.4, 12, WH / 2, 10, matDarkWood)
+wall(0.4, WH, 3, 7, WH / 2, 3.5, matDarkWood)
+wall(0.4, WH, 3, 7, WH / 2, 8.5, matDarkWood)
+const roofB = new THREE.Mesh(new THREE.BoxGeometry(11, 0.3, 9), matRoof)
+roofB.position.set(12, WH + 0.15, 6); scene.add(roofB)
 
-// === PERIMETER ===
-wall(ARENA_W, WH, 0.5, 0, WH / 2, -halfD, matConcrete)
-wall(ARENA_W, WH, 0.5, 0, WH / 2, halfD, matConcrete)
-wall(0.5, WH, ARENA_D, -halfW, WH / 2, 0, matConcrete)
-wall(0.5, WH, ARENA_D, halfW, WH / 2, 0, matConcrete)
+// === CENTER GARDEN ===
+// Pond
+const pond = new THREE.Mesh(new THREE.CircleGeometry(3, 16), matWater)
+pond.rotation.x = -Math.PI / 2; pond.position.set(0, 0.02, 0); scene.add(pond)
+// Stone bridge over pond
+wall(1.2, 0.3, 7, 0, 0.25, 0, matStone)
 
-// === SITE A (Northwest) ===
-wall(16, WH, 0.5, -22, WH / 2, -1, matBrick)
-wall(16, WH, 0.5, -22, WH / 2, -15, matBrick)
-wall(0.5, WH, 5, -14, WH / 2, -3.5, matBrick)
-wall(0.5, WH, 5, -14, WH / 2, -12.5, matBrick)
-crate(-24, -12); crate(-22, -5)
-doubleCrate(-18, -10)
-wall(4, 1.5, 0.5, -16, 0.75, -8, matMetal)
-barrel(-26, -8); barrel(-12, -3)
+// === BAMBOO CORRIDORS ===
+wall(0.4, WH, 5, -3, WH / 2, -4.5, matBamboo)
+wall(0.4, WH, 5, 3, WH / 2, 4.5, matBamboo)
 
-// === SITE B (Southeast) ===
-wall(16, WH, 0.5, 22, WH / 2, 1, matBrick)
-wall(16, WH, 0.5, 22, WH / 2, 15, matBrick)
-wall(0.5, WH, 5, 14, WH / 2, 3.5, matBrick)
-wall(0.5, WH, 5, 14, WH / 2, 12.5, matBrick)
-crate(24, 12); crate(22, 5)
-doubleCrate(18, 10)
-wall(4, 1.5, 0.5, 16, 0.75, 8, matMetal)
-barrel(26, 8); barrel(12, 3)
+// === SIDE PASSAGES ===
+wall(6, WH, 0.4, -5, WH / 2, -12, matStone)
+wall(0.4, WH, 3, -2, WH / 2, -10.5, matStone)
+wall(6, WH, 0.4, 5, WH / 2, 12, matStone)
+wall(0.4, WH, 3, 2, WH / 2, 10.5, matStone)
 
-// === MID CORRIDOR ===
-wall(0.5, WH, 7, -3, WH / 2, -3.5, matConcreteD)
-wall(0.5, WH, 7, 3, WH / 2, 3.5, matConcreteD)
-wall(0.5, WH, 3, -3, WH / 2, 5.5, matConcreteD)
-wall(0.5, WH, 3, 3, WH / 2, -5.5, matConcreteD)
-crate(0, 0)
-wall(2, 1, 0.5, -1, 0.5, 3, matMetal)
+// === LOW WALLS (cover) ===
+wall(3, 1.2, 0.4, -8, 0.6, 5, matStone)
+wall(0.4, 1.2, 3, 8, 0.6, -5, matStone)
+wall(3, 1.2, 0.4, 4, 0.6, -10, matStone)
+wall(0.4, 1.2, 3, -4, 0.6, 10, matStone)
 
-// === CONNECTORS ===
-wall(8, WH, 0.5, -6, WH / 2, -15, matConcreteD)
-wall(0.5, WH, 5, -2, WH / 2, -12.5, matConcreteD)
-wall(8, WH, 0.5, 6, WH / 2, 15, matConcreteD)
-wall(0.5, WH, 5, 2, WH / 2, 12.5, matConcreteD)
+// === RICE BALES (cover) ===
+riceBale(-14, -4); riceBale(-10, -8)
+riceBale(14, 4); riceBale(10, 8)
+riceBale(-5, 7); riceBale(5, -7)
+riceBale(0, -11); riceBale(0, 11)
 
-// === CONTAINERS ===
-wall(5, 2.8, 2.5, -20, 1.4, 8, matBlue)
-wall(5, 2.8, 2.5, 20, 1.4, -8, matRed)
-wall(2.5, 2.8, 5, -5, 1.4, 12, matGreen)
-wall(2.5, 2.8, 5, 5, 1.4, -12, matGreen)
+// === WOODEN BARRICADES ===
+woodenBarricade(-9, 0)
+woodenBarricade(9, 0)
+woodenBarricade(-3, 8, Math.PI / 2)
+woodenBarricade(3, -8, Math.PI / 2)
 
-// === LOW WALLS ===
-wall(5, 1.2, 0.5, -12, 0.6, 10, matConcrete)
-wall(0.5, 1.2, 5, 12, 0.6, -10, matConcrete)
-wall(4, 1.2, 0.5, 8, 0.6, -16, matConcrete)
-wall(0.5, 1.2, 4, -8, 0.6, 16, matConcrete)
+// === TORII GATES ===
+torii(-14, 0, Math.PI / 2)
+torii(14, 0, Math.PI / 2)
+torii(0, -14)
+torii(0, 14)
 
-// === PILLARS ===
-wall(0.5, WH, 0.5, -4, WH / 2, -8, matConcreteD)
-wall(0.5, WH, 0.5, 4, WH / 2, 8, matConcreteD)
+// === LANTERNS ===
+lantern(-15, -11); lantern(-9, -11)
+lantern(15, 11); lantern(9, 11)
+lantern(-6, 0); lantern(6, 0)
+lantern(-15, 6); lantern(15, -6)
+lantern(-2, -6); lantern(2, 6)
 
-// === BARRELS ===
-barrel(-16, 5); barrel(16, -5)
-barrel(-27, 14); barrel(27, -14)
-barrel(-7, -17); barrel(7, 17)
+// === STONE LANTERNS ===
+stoneLanternProp(-3, -3); stoneLanternProp(3, 3)
+stoneLanternProp(-16, 12); stoneLanternProp(16, -12)
 
-// === SCATTERED CRATES ===
-crate(-25, 15); crate(25, -15)
-crate(-8, 10); crate(8, -10)
-crate(0, -16, 2); crate(0, 16, 2)
+// === SAKURA TREES ===
+sakuraTree(-15, 10); sakuraTree(15, -10)
+sakuraTree(-6, -13); sakuraTree(6, 13)
+sakuraTree(12, -12); sakuraTree(-12, 12)
 
-// === SANDBAGS ===
-sandbags(-14, 3)
-sandbags(14, -3)
-sandbags(-6, -11, Math.PI / 2)
-sandbags(6, 11, Math.PI / 2)
-
-// === DECORATIVE PROPS ===
-streetLight(-25, -17)
-streetLight(25, 17)
-streetLight(-25, 17)
-streetLight(25, -17)
-
-trafficCone(-9, -2); trafficCone(9, 2)
-trafficCone(-22, 13); trafficCone(22, -13)
-trafficCone(15, 16); trafficCone(-15, -16)
-
-tireStack(-28, 0)
-tireStack(28, 0)
-tireStack(-5, -18, 2)
-tireStack(5, 18, 4)
+// === BAMBOO CLUSTERS ===
+bambooCluster(-17, -3, 4); bambooCluster(17, 3, 4)
+bambooCluster(-16, -13, 3); bambooCluster(16, 13, 3)
+bambooCluster(-1, 13, 3); bambooCluster(1, -13, 3)
 
 // =============================================================
 //  AVATAR
@@ -793,14 +855,14 @@ interface Projectile {
 const projectiles: Projectile[] = []
 
 const SPAWN_POINTS = [
-  { x: -20, z: -17, angle: Math.PI / 4 },
-  { x: 20, z: 17, angle: -Math.PI * 3 / 4 },
-  { x: -25, z: 5, angle: 0 },
-  { x: 25, z: -5, angle: Math.PI },
-  { x: 0, z: -18, angle: Math.PI / 2 },
-  { x: 0, z: 18, angle: -Math.PI / 2 },
-  { x: -15, z: -10, angle: 0 },
-  { x: 15, z: 10, angle: Math.PI },
+  { x: -12, z: -6, angle: 0 },
+  { x: 12, z: 6, angle: Math.PI },
+  { x: -15, z: 10, angle: -Math.PI / 4 },
+  { x: 15, z: -10, angle: Math.PI * 3 / 4 },
+  { x: 0, z: -12, angle: Math.PI / 2 },
+  { x: 0, z: 12, angle: -Math.PI / 2 },
+  { x: -6, z: 3, angle: 0 },
+  { x: 6, z: -3, angle: Math.PI },
 ]
 
 function randomSpawn(other?: PlayerState) {
@@ -2394,6 +2456,9 @@ function startGame(mode: GameMode) {
 
   applyMapTheme(selectedMap)
 
+  gamePaused = false
+  pauseMenu.classList.remove('visible')
+
   // Reset spawn
   const s1 = randomSpawn()
   player1.x = s1.x; player1.z = s1.z; player1.angle = s1.angle
@@ -2401,7 +2466,7 @@ function startGame(mode: GameMode) {
   player2.x = s2.x; player2.z = s2.z; player2.angle = s2.angle
 
   clock.getDelta() // reset clock
-  animate()
+  if (!animating) { animating = true; animate() }
 }
 
 function createRoom() {
