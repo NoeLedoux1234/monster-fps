@@ -2416,13 +2416,13 @@ function applyMapTheme(theme: MapTheme) {
     flashlight.intensity = 0
     for (const pl of flickerLights) pl.intensity = 0.05
   } else {
-    scene.background = new THREE.Color(0x020206)
-    scene.fog = new THREE.Fog(0x020206, 6, 32)
-    ambientLight.color.setHex(0x0a0a18)
-    ambientLight.intensity = 0.08
+    scene.background = new THREE.Color(0x050510)
+    scene.fog = new THREE.Fog(0x050510, 12, 45)
+    ambientLight.color.setHex(0x1a1a3a)
+    ambientLight.intensity = 0.15
     sunLight.intensity = 0
-    flashlight.intensity = 5
-    for (const pl of flickerLights) pl.intensity = 0.25
+    flashlight.intensity = 4
+    for (const pl of flickerLights) pl.intensity = 0.4
   }
 }
 
