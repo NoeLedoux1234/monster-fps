@@ -1050,8 +1050,24 @@ function updatePlayerMovement(
 // =============================================================
 //  SHOOTING
 // =============================================================
-let killfeedText = ''
+interface KillfeedEntry {
+  killer: string
+  killerColor: string
+  victim: string
+  victimColor: string
+  weapon: string
+  headshot: boolean
+}
+let killfeedEntry: KillfeedEntry | null = null
 let killfeedTimer = 0
+
+const P1_COLOR = '#3498db'
+const P2_COLOR = '#e74c3c'
+
+function setKillfeed(killer: string, killerColor: string, victim: string, victimColor: string, weapon: string, headshot: boolean) {
+  killfeedEntry = { killer, killerColor, victim, victimColor, weapon, headshot }
+  killfeedTimer = 3
+}
 
 function shoot(shooter: PlayerState, target: PlayerState) {
   const wpn = getWeapon(shooter)
@@ -1176,10 +1192,12 @@ function shoot(shooter: PlayerState, target: PlayerState) {
     if (!isMultiplayer && target.hp <= 0) {
       target.hp = 0
       target.isDead = true
-      const killerName = shooter === player1 ? 'Joueur' : 'Bot'
-      const hsTag = meshName === 'head' ? ' [HEADSHOT]' : ''
-      killfeedText = `${killerName} a tue avec ${wpn.name}${hsTag}`
-      killfeedTimer = 3
+      const isP1Killer = shooter === player1
+      setKillfeed(
+        isP1Killer ? 'Joueur' : 'Bot', isP1Killer ? P1_COLOR : P2_COLOR,
+        isP1Killer ? 'Bot' : 'Joueur', isP1Killer ? P2_COLOR : P1_COLOR,
+        wpn.name, meshName === 'head'
+      )
 
       shooter.weaponLevel++
       if (shooter.weaponLevel >= WEAPONS.length) {
@@ -1326,10 +1344,12 @@ function updateProjectiles(dt: number) {
           if (!isMultiplayer && target.hp <= 0) {
             target.hp = 0
             target.isDead = true
-            const killerName = proj.owner === player1 ? 'Joueur' : 'Bot'
-            const hsTag = meshName === 'head' ? ' [HEADSHOT]' : ''
-            killfeedText = `${killerName} a tue avec ${proj.weapon.name}${hsTag}`
-            killfeedTimer = 3
+            const isP1Killer = proj.owner === player1
+            setKillfeed(
+              isP1Killer ? 'Joueur' : 'Bot', isP1Killer ? P1_COLOR : P2_COLOR,
+              isP1Killer ? 'Bot' : 'Joueur', isP1Killer ? P2_COLOR : P1_COLOR,
+              proj.weapon.name, meshName === 'head'
+            )
 
             proj.owner.weaponLevel++
             if (proj.owner.weaponLevel >= WEAPONS.length) {
@@ -1756,8 +1776,14 @@ function updateUI() {
 
   cross1El.classList.toggle('aiming', isAimingAt(player1, player2))
 
-  if (killfeedTimer > 0) {
-    killfeedEl.textContent = killfeedText
+  if (killfeedTimer > 0 && killfeedEntry) {
+    const e = killfeedEntry
+    const hs = e.headshot ? ' <span style="color:#ff4444;font-weight:bold;font-size:0.85em;margin-left:6px">HEADSHOT</span>' : ''
+    killfeedEl.innerHTML = `
+      <span style="color:${e.killerColor};font-weight:bold">\u25CF ${e.killer}</span>
+      <span style="color:#888;margin:0 8px">${e.weapon}</span>
+      <span style="color:${e.victimColor};font-weight:bold">\u25CF ${e.victim}</span>${hs}
+    `
     killfeedEl.style.opacity = '1'
   } else {
     killfeedEl.style.opacity = '0'
@@ -2205,8 +2231,7 @@ function handleNetMessage(msg: NetMessage) {
       if (player1.hp <= 0) {
         player1.hp = 0
         player1.isDead = true
-        killfeedText = `Ennemi a tue avec ${WEAPONS[msg.weaponLevel].name}`
-        killfeedTimer = 3
+        setKillfeed('Ennemi', P2_COLOR, 'Vous', P1_COLOR, WEAPONS[msg.weaponLevel].name, false)
         // Send kill confirmation to remote
         sendNet({ type: 'kill', killerWeaponLevel: msg.weaponLevel })
         // Activate kill cam — remote is the killer
@@ -2220,6 +2245,7 @@ function handleNetMessage(msg: NetMessage) {
 
     case 'kill': {
       // We killed the remote player — weapon progression
+      setKillfeed('Vous', P1_COLOR, 'Ennemi', P2_COLOR, WEAPONS[player1.weaponLevel].name, false)
       player1.weaponLevel++
       if (player1.weaponLevel >= WEAPONS.length) {
         showWin('Victoire !')
