@@ -140,6 +140,506 @@ let mouseSensitivity = 0.002
 let gamePaused = false
 
 const settings = { masterVolume: 0.5 }
+
+// =============================================================
+//  SOUND MANAGER (Procedural Web Audio API)
+// =============================================================
+class SoundManager {
+  private ctx: AudioContext | null = null
+  private masterGain: GainNode | null = null
+  private ambienceOsc: OscillatorNode | null = null
+  private ambienceLfo: OscillatorNode | null = null
+  private ambienceGain: GainNode | null = null
+  footstepTimer = 0
+
+  private ensureCtx(): AudioContext {
+    if (!this.ctx) {
+      this.ctx = new AudioContext()
+      this.masterGain = this.ctx.createGain()
+      this.masterGain.gain.value = settings.masterVolume
+      this.masterGain.connect(this.ctx.destination)
+    }
+    if (this.ctx.state === 'suspended') this.ctx.resume()
+    return this.ctx
+  }
+
+  private getMaster(): GainNode {
+    this.ensureCtx()
+    return this.masterGain!
+  }
+
+  setVolume(v: number) {
+    if (this.masterGain) this.masterGain.gain.value = v
+  }
+
+  private whiteNoise(ctx: AudioContext, duration: number): AudioBufferSourceNode {
+    const sz = Math.floor(ctx.sampleRate * duration)
+    const buf = ctx.createBuffer(1, sz, ctx.sampleRate)
+    const data = buf.getChannelData(0)
+    for (let i = 0; i < sz; i++) data[i] = Math.random() * 2 - 1
+    const src = ctx.createBufferSource()
+    src.buffer = buf
+    return src
+  }
+
+  gunshot(weaponLevel: number) {
+    const ctx = this.ensureCtx()
+    const now = ctx.currentTime
+    const master = this.getMaster()
+
+    // Different params per weapon
+    const configs: { freq: number; dur: number; gain: number }[] = [
+      { freq: 800, dur: 0.15, gain: 0.6 },   // AK-47
+      { freq: 600, dur: 0.2, gain: 0.5 },     // DMR
+      { freq: 1200, dur: 0.08, gain: 0.4 },   // Glock-18
+      { freq: 400, dur: 0.25, gain: 0.8 },    // Desert Eagle
+      { freq: 0, dur: 0, gain: 0 },           // Couteau (not used)
+      { freq: 200, dur: 0.4, gain: 0.9 },     // RPG-7 (not used directly)
+    ]
+    const cfg = configs[Math.min(weaponLevel, configs.length - 1)]
+
+    const noise = this.whiteNoise(ctx, cfg.dur)
+    const filter = ctx.createBiquadFilter()
+    filter.type = 'lowpass'
+    filter.frequency.setValueAtTime(cfg.freq, now)
+    filter.frequency.exponentialRampToValueAtTime(100, now + cfg.dur)
+
+    const env = ctx.createGain()
+    env.gain.setValueAtTime(cfg.gain, now)
+    env.gain.exponentialRampToValueAtTime(0.001, now + cfg.dur)
+
+    noise.connect(filter).connect(env).connect(master)
+    noise.start(now)
+    noise.stop(now + cfg.dur)
+  }
+
+  gunshotRemote(_weaponLevel: number) {
+    const ctx = this.ensureCtx()
+    const now = ctx.currentTime
+    const master = this.getMaster()
+    const dur = 0.12
+    const noise = this.whiteNoise(ctx, dur)
+    const filter = ctx.createBiquadFilter()
+    filter.type = 'lowpass'
+    filter.frequency.value = 500
+    const env = ctx.createGain()
+    env.gain.setValueAtTime(0.15, now)
+    env.gain.exponentialRampToValueAtTime(0.001, now + dur)
+    noise.connect(filter).connect(env).connect(master)
+    noise.start(now)
+    noise.stop(now + dur)
+  }
+
+  melee() {
+    const ctx = this.ensureCtx()
+    const now = ctx.currentTime
+    const master = this.getMaster()
+    const dur = 0.08
+    const noise = this.whiteNoise(ctx, dur)
+    const filter = ctx.createBiquadFilter()
+    filter.type = 'highpass'
+    filter.frequency.value = 2000
+    const env = ctx.createGain()
+    env.gain.setValueAtTime(0.4, now)
+    env.gain.exponentialRampToValueAtTime(0.001, now + dur)
+    noise.connect(filter).connect(env).connect(master)
+    noise.start(now)
+    noise.stop(now + dur)
+  }
+
+  rocketLaunch() {
+    const ctx = this.ensureCtx()
+    const now = ctx.currentTime
+    const master = this.getMaster()
+    // Low rumble
+    const osc = ctx.createOscillator()
+    osc.type = 'sawtooth'
+    osc.frequency.setValueAtTime(80, now)
+    osc.frequency.exponentialRampToValueAtTime(40, now + 0.5)
+    const env = ctx.createGain()
+    env.gain.setValueAtTime(0.5, now)
+    env.gain.exponentialRampToValueAtTime(0.001, now + 0.5)
+    osc.connect(env).connect(master)
+    osc.start(now)
+    osc.stop(now + 0.5)
+    // Noise layer
+    const noise = this.whiteNoise(ctx, 0.4)
+    const nEnv = ctx.createGain()
+    nEnv.gain.setValueAtTime(0.3, now)
+    nEnv.gain.exponentialRampToValueAtTime(0.001, now + 0.4)
+    const filter = ctx.createBiquadFilter()
+    filter.type = 'lowpass'
+    filter.frequency.value = 600
+    noise.connect(filter).connect(nEnv).connect(master)
+    noise.start(now)
+    noise.stop(now + 0.4)
+  }
+
+  hitmarker() {
+    const ctx = this.ensureCtx()
+    const now = ctx.currentTime
+    const master = this.getMaster()
+    const osc = ctx.createOscillator()
+    osc.type = 'square'
+    osc.frequency.value = 800
+    const env = ctx.createGain()
+    env.gain.setValueAtTime(0.25, now)
+    env.gain.exponentialRampToValueAtTime(0.001, now + 0.08)
+    osc.connect(env).connect(master)
+    osc.start(now)
+    osc.stop(now + 0.08)
+  }
+
+  headshot() {
+    const ctx = this.ensureCtx()
+    const now = ctx.currentTime
+    const master = this.getMaster()
+    for (let i = 0; i < 2; i++) {
+      const osc = ctx.createOscillator()
+      osc.type = 'square'
+      osc.frequency.value = 1200
+      const env = ctx.createGain()
+      const t = now + i * 0.07
+      env.gain.setValueAtTime(0.3, t)
+      env.gain.exponentialRampToValueAtTime(0.001, t + 0.06)
+      osc.connect(env).connect(master)
+      osc.start(t)
+      osc.stop(t + 0.06)
+    }
+  }
+
+  takeDamage() {
+    const ctx = this.ensureCtx()
+    const now = ctx.currentTime
+    const master = this.getMaster()
+    // Bass thud
+    const osc = ctx.createOscillator()
+    osc.type = 'sine'
+    osc.frequency.setValueAtTime(100, now)
+    osc.frequency.exponentialRampToValueAtTime(30, now + 0.2)
+    const env = ctx.createGain()
+    env.gain.setValueAtTime(0.5, now)
+    env.gain.exponentialRampToValueAtTime(0.001, now + 0.2)
+    osc.connect(env).connect(master)
+    osc.start(now)
+    osc.stop(now + 0.2)
+    // Noise hit
+    const noise = this.whiteNoise(ctx, 0.1)
+    const nEnv = ctx.createGain()
+    nEnv.gain.setValueAtTime(0.2, now)
+    nEnv.gain.exponentialRampToValueAtTime(0.001, now + 0.1)
+    noise.connect(nEnv).connect(master)
+    noise.start(now)
+    noise.stop(now + 0.1)
+  }
+
+  reload() {
+    const ctx = this.ensureCtx()
+    const now = ctx.currentTime
+    const master = this.getMaster()
+    // Sequence of metallic clicks
+    const times = [0, 0.15, 0.4, 0.55]
+    const freqs = [3000, 2000, 2500, 3500]
+    times.forEach((t, i) => {
+      const osc = ctx.createOscillator()
+      osc.type = 'triangle'
+      osc.frequency.value = freqs[i]
+      const env = ctx.createGain()
+      env.gain.setValueAtTime(0.2, now + t)
+      env.gain.exponentialRampToValueAtTime(0.001, now + t + 0.04)
+      osc.connect(env).connect(master)
+      osc.start(now + t)
+      osc.stop(now + t + 0.04)
+    })
+  }
+
+  dryFire() {
+    const ctx = this.ensureCtx()
+    const now = ctx.currentTime
+    const master = this.getMaster()
+    const osc = ctx.createOscillator()
+    osc.type = 'triangle'
+    osc.frequency.value = 4000
+    const env = ctx.createGain()
+    env.gain.setValueAtTime(0.15, now)
+    env.gain.exponentialRampToValueAtTime(0.001, now + 0.02)
+    osc.connect(env).connect(master)
+    osc.start(now)
+    osc.stop(now + 0.02)
+  }
+
+  footstep() {
+    const ctx = this.ensureCtx()
+    const now = ctx.currentTime
+    const master = this.getMaster()
+    const dur = 0.05
+    const noise = this.whiteNoise(ctx, dur)
+    const filter = ctx.createBiquadFilter()
+    filter.type = 'lowpass'
+    filter.frequency.value = 800 + Math.random() * 400
+    const env = ctx.createGain()
+    env.gain.setValueAtTime(0.12, now)
+    env.gain.exponentialRampToValueAtTime(0.001, now + dur)
+    noise.connect(filter).connect(env).connect(master)
+    noise.start(now)
+    noise.stop(now + dur)
+  }
+
+  jump() {
+    const ctx = this.ensureCtx()
+    const now = ctx.currentTime
+    const master = this.getMaster()
+    const osc = ctx.createOscillator()
+    osc.type = 'sine'
+    osc.frequency.setValueAtTime(200, now)
+    osc.frequency.exponentialRampToValueAtTime(600, now + 0.12)
+    const env = ctx.createGain()
+    env.gain.setValueAtTime(0.15, now)
+    env.gain.exponentialRampToValueAtTime(0.001, now + 0.12)
+    osc.connect(env).connect(master)
+    osc.start(now)
+    osc.stop(now + 0.12)
+  }
+
+  land() {
+    const ctx = this.ensureCtx()
+    const now = ctx.currentTime
+    const master = this.getMaster()
+    const osc = ctx.createOscillator()
+    osc.type = 'sine'
+    osc.frequency.setValueAtTime(120, now)
+    osc.frequency.exponentialRampToValueAtTime(40, now + 0.1)
+    const env = ctx.createGain()
+    env.gain.setValueAtTime(0.3, now)
+    env.gain.exponentialRampToValueAtTime(0.001, now + 0.1)
+    osc.connect(env).connect(master)
+    osc.start(now)
+    osc.stop(now + 0.1)
+    // Thud noise
+    const noise = this.whiteNoise(ctx, 0.06)
+    const filter = ctx.createBiquadFilter()
+    filter.type = 'lowpass'
+    filter.frequency.value = 400
+    const nEnv = ctx.createGain()
+    nEnv.gain.setValueAtTime(0.15, now)
+    nEnv.gain.exponentialRampToValueAtTime(0.001, now + 0.06)
+    noise.connect(filter).connect(nEnv).connect(master)
+    noise.start(now)
+    noise.stop(now + 0.06)
+  }
+
+  screamer() {
+    const ctx = this.ensureCtx()
+    const now = ctx.currentTime
+    const master = this.getMaster()
+    // Loud white noise burst
+    const noise = this.whiteNoise(ctx, 0.8)
+    const env = ctx.createGain()
+    env.gain.setValueAtTime(0.7, now)
+    env.gain.setValueAtTime(0.7, now + 0.5)
+    env.gain.exponentialRampToValueAtTime(0.001, now + 0.8)
+    noise.connect(env).connect(master)
+    noise.start(now)
+    noise.stop(now + 0.8)
+    // Dissonant oscillators
+    const freqs = [440, 466, 880, 932]
+    freqs.forEach(f => {
+      const osc = ctx.createOscillator()
+      osc.type = 'sawtooth'
+      osc.frequency.value = f
+      const oEnv = ctx.createGain()
+      oEnv.gain.setValueAtTime(0.3, now)
+      oEnv.gain.exponentialRampToValueAtTime(0.001, now + 0.7)
+      osc.connect(oEnv).connect(master)
+      osc.start(now)
+      osc.stop(now + 0.7)
+    })
+  }
+
+  kill() {
+    const ctx = this.ensureCtx()
+    const now = ctx.currentTime
+    const master = this.getMaster()
+    // Short ascending jingle
+    const notes = [523, 659, 784]
+    notes.forEach((f, i) => {
+      const osc = ctx.createOscillator()
+      osc.type = 'square'
+      osc.frequency.value = f
+      const env = ctx.createGain()
+      const t = now + i * 0.08
+      env.gain.setValueAtTime(0.2, t)
+      env.gain.exponentialRampToValueAtTime(0.001, t + 0.1)
+      osc.connect(env).connect(master)
+      osc.start(t)
+      osc.stop(t + 0.1)
+    })
+  }
+
+  death() {
+    const ctx = this.ensureCtx()
+    const now = ctx.currentTime
+    const master = this.getMaster()
+    const osc = ctx.createOscillator()
+    osc.type = 'sawtooth'
+    osc.frequency.setValueAtTime(300, now)
+    osc.frequency.exponentialRampToValueAtTime(60, now + 0.6)
+    const env = ctx.createGain()
+    env.gain.setValueAtTime(0.35, now)
+    env.gain.exponentialRampToValueAtTime(0.001, now + 0.6)
+    osc.connect(env).connect(master)
+    osc.start(now)
+    osc.stop(now + 0.6)
+  }
+
+  weaponSwitch() {
+    const ctx = this.ensureCtx()
+    const now = ctx.currentTime
+    const master = this.getMaster()
+    // Metallic click
+    const osc = ctx.createOscillator()
+    osc.type = 'triangle'
+    osc.frequency.value = 3000
+    const env = ctx.createGain()
+    env.gain.setValueAtTime(0.2, now)
+    env.gain.exponentialRampToValueAtTime(0.001, now + 0.03)
+    osc.connect(env).connect(master)
+    osc.start(now)
+    osc.stop(now + 0.03)
+    // Second click
+    const osc2 = ctx.createOscillator()
+    osc2.type = 'triangle'
+    osc2.frequency.value = 2500
+    const env2 = ctx.createGain()
+    env2.gain.setValueAtTime(0.15, now + 0.05)
+    env2.gain.exponentialRampToValueAtTime(0.001, now + 0.08)
+    osc2.connect(env2).connect(master)
+    osc2.start(now + 0.05)
+    osc2.stop(now + 0.08)
+  }
+
+  explosion() {
+    const ctx = this.ensureCtx()
+    const now = ctx.currentTime
+    const master = this.getMaster()
+    // Low boom
+    const osc = ctx.createOscillator()
+    osc.type = 'sine'
+    osc.frequency.setValueAtTime(100, now)
+    osc.frequency.exponentialRampToValueAtTime(20, now + 0.5)
+    const env = ctx.createGain()
+    env.gain.setValueAtTime(0.6, now)
+    env.gain.exponentialRampToValueAtTime(0.001, now + 0.5)
+    osc.connect(env).connect(master)
+    osc.start(now)
+    osc.stop(now + 0.5)
+    // Crackle noise
+    const noise = this.whiteNoise(ctx, 0.3)
+    const filter = ctx.createBiquadFilter()
+    filter.type = 'bandpass'
+    filter.frequency.value = 3000
+    filter.Q.value = 2
+    const nEnv = ctx.createGain()
+    nEnv.gain.setValueAtTime(0.3, now)
+    nEnv.gain.exponentialRampToValueAtTime(0.001, now + 0.3)
+    noise.connect(filter).connect(nEnv).connect(master)
+    noise.start(now)
+    noise.stop(now + 0.3)
+  }
+
+  startAmbience() {
+    const ctx = this.ensureCtx()
+    const master = this.getMaster()
+    if (this.ambienceOsc) return
+    // Low drone
+    this.ambienceOsc = ctx.createOscillator()
+    this.ambienceOsc.type = 'sine'
+    this.ambienceOsc.frequency.value = 42
+    this.ambienceGain = ctx.createGain()
+    this.ambienceGain.gain.value = 0.08
+    // LFO for variation
+    this.ambienceLfo = ctx.createOscillator()
+    this.ambienceLfo.type = 'sine'
+    this.ambienceLfo.frequency.value = 0.3
+    const lfoGain = ctx.createGain()
+    lfoGain.gain.value = 8
+    this.ambienceLfo.connect(lfoGain).connect(this.ambienceOsc.frequency)
+    this.ambienceOsc.connect(this.ambienceGain).connect(master)
+    this.ambienceOsc.start()
+    this.ambienceLfo.start()
+  }
+
+  stopAmbience() {
+    if (this.ambienceOsc) {
+      this.ambienceOsc.stop()
+      this.ambienceOsc = null
+    }
+    if (this.ambienceLfo) {
+      this.ambienceLfo.stop()
+      this.ambienceLfo = null
+    }
+    this.ambienceGain = null
+  }
+
+  uiClick() {
+    const ctx = this.ensureCtx()
+    const now = ctx.currentTime
+    const master = this.getMaster()
+    const osc = ctx.createOscillator()
+    osc.type = 'sine'
+    osc.frequency.value = 1000
+    const env = ctx.createGain()
+    env.gain.setValueAtTime(0.1, now)
+    env.gain.exponentialRampToValueAtTime(0.001, now + 0.02)
+    osc.connect(env).connect(master)
+    osc.start(now)
+    osc.stop(now + 0.02)
+  }
+
+  victory() {
+    const ctx = this.ensureCtx()
+    const now = ctx.currentTime
+    const master = this.getMaster()
+    // Simple fanfare: C E G C5
+    const notes = [523, 659, 784, 1047]
+    notes.forEach((f, i) => {
+      const osc = ctx.createOscillator()
+      osc.type = 'square'
+      osc.frequency.value = f
+      const env = ctx.createGain()
+      const t = now + i * 0.15
+      env.gain.setValueAtTime(0.2, t)
+      env.gain.setValueAtTime(0.2, t + 0.12)
+      env.gain.exponentialRampToValueAtTime(0.001, t + 0.2)
+      osc.connect(env).connect(master)
+      osc.start(t)
+      osc.stop(t + 0.2)
+    })
+  }
+
+  defeat() {
+    const ctx = this.ensureCtx()
+    const now = ctx.currentTime
+    const master = this.getMaster()
+    // Sad descending notes
+    const notes = [392, 349, 311, 262]
+    notes.forEach((f, i) => {
+      const osc = ctx.createOscillator()
+      osc.type = 'sine'
+      osc.frequency.value = f
+      const env = ctx.createGain()
+      const t = now + i * 0.2
+      env.gain.setValueAtTime(0.2, t)
+      env.gain.exponentialRampToValueAtTime(0.001, t + 0.25)
+      osc.connect(env).connect(master)
+      osc.start(t)
+      osc.stop(t + 0.25)
+    })
+  }
+}
+
+const soundManager = new SoundManager()
+
 const HEADSHOT_MULT = 2.0
 const BODY_MULT = 1.0
 const LEG_MULT = 0.65
@@ -1102,6 +1602,7 @@ function updatePlayerMovement(
   if (jump && p.isGrounded && !p.isCrouching) {
     p.vy = JUMP_FORCE
     p.isGrounded = false
+    if (p === player1) soundManager.jump()
   }
 
   if (!p.isGrounded) {
@@ -1111,10 +1612,23 @@ function updatePlayerMovement(
       p.y = 0; p.vy = 0
       p.isGrounded = true
       p.landPenalty = 0.15
+      if (p === player1) soundManager.land()
     }
   }
 
   if (p.landPenalty > 0) p.landPenalty -= dt
+
+  // Footsteps
+  if (p === player1 && p.isGrounded && speed > 1) {
+    const interval = p.isCrouching ? 0.5 : 0.35
+    soundManager.footstepTimer -= dt
+    if (soundManager.footstepTimer <= 0) {
+      soundManager.footstep()
+      soundManager.footstepTimer = interval
+    }
+  } else if (p === player1 && (speed <= 1 || !p.isGrounded)) {
+    soundManager.footstepTimer = 0
+  }
 
   p.isCrouching = crouch && p.isGrounded
   const targetCrouch = p.isCrouching ? 1 : 0
@@ -1148,13 +1662,17 @@ function shoot(shooter: PlayerState, target: PlayerState) {
   const wpn = getWeapon(shooter)
   if (shooter.isDead || shooter.isReloading) return
   if (shooter.fireCooldown > 0) return
-  if (!wpn.melee && shooter.ammo <= 0) return
+  if (!wpn.melee && shooter.ammo <= 0) {
+    if (shooter === player1) soundManager.dryFire()
+    return
+  }
   if (shooter === player1 && inspecting) { inspecting = false; return }
 
   shooter.fireCooldown = wpn.cooldown
 
   const vmRef = shooter.viewmodel
   if (wpn.melee) {
+    if (shooter === player1) soundManager.melee()
     vmRef.rotation.x = -0.8
     setTimeout(() => { vmRef.rotation.x = 0 }, 200)
   } else {
@@ -1178,6 +1696,8 @@ function shoot(shooter: PlayerState, target: PlayerState) {
 
   // Player ranged: create projectile instead of hitscan
   if (shooter === player1 && !wpn.melee) {
+    if (wpn.name === 'RPG-7') soundManager.rocketLaunch()
+    else soundManager.gunshot(shooter.weaponLevel)
     const velocity = dir.clone().multiplyScalar(wpn.bulletSpeed)
     const isRocket = wpn.name === 'RPG-7'
     const bulletGeo = isRocket
@@ -1246,8 +1766,11 @@ function shoot(shooter: PlayerState, target: PlayerState) {
     // Hit marker (only for human player)
     if (shooter === player1) {
       if (meshName === 'head') {
+        soundManager.headshot()
         hit1El.textContent = 'HS'
         setTimeout(() => { hit1El.textContent = 'X' }, 500)
+      } else {
+        soundManager.hitmarker()
       }
       hit1El.classList.add('visible')
       setTimeout(() => hit1El.classList.remove('visible'), 400)
@@ -1267,6 +1790,8 @@ function shoot(shooter: PlayerState, target: PlayerState) {
     if (!isMultiplayer && target.hp <= 0) {
       target.hp = 0
       target.isDead = true
+      if (shooter === player1) soundManager.kill()
+      if (target === player1) soundManager.death()
       const isP1Killer = shooter === player1
       setKillfeed(
         isP1Killer ? 'Joueur' : 'Bot', isP1Killer ? P1_COLOR : P2_COLOR,
@@ -1286,6 +1811,7 @@ function shoot(shooter: PlayerState, target: PlayerState) {
       shooter.isReloading = false
       shooter.fireCooldown = 0.5
       updateViewmodelForWeapon(shooter.viewmodel, newWpn)
+      if (shooter === player1) soundManager.weaponSwitch()
 
       killCamActive = true
       killCamTimer = 0
@@ -1307,6 +1833,7 @@ function startReload(p: PlayerState) {
   if (wpn.melee || p.isReloading || p.ammo >= wpn.magSize) return
   p.isReloading = true
   p.reloadTimer = wpn.reloadTime
+  if (p === player1) soundManager.reload()
 }
 
 function handleFire(p: PlayerState, target: PlayerState, fireKey: boolean) {
@@ -1394,8 +1921,11 @@ function updateProjectiles(dt: number) {
 
           if (proj.owner === player1) {
             if (meshName === 'head') {
+              soundManager.headshot()
               hit1El.textContent = 'HS'
               setTimeout(() => { hit1El.textContent = 'X' }, 500)
+            } else {
+              soundManager.hitmarker()
             }
             hit1El.classList.add('visible')
             setTimeout(() => hit1El.classList.remove('visible'), 400)
@@ -1419,6 +1949,8 @@ function updateProjectiles(dt: number) {
           if (!isMultiplayer && target.hp <= 0) {
             target.hp = 0
             target.isDead = true
+            if (proj.owner === player1) soundManager.kill()
+            if (target === player1) soundManager.death()
             const isP1Killer = proj.owner === player1
             setKillfeed(
               isP1Killer ? 'Joueur' : 'Bot', isP1Killer ? P1_COLOR : P2_COLOR,
@@ -1436,6 +1968,7 @@ function updateProjectiles(dt: number) {
               proj.owner.isReloading = false
               proj.owner.fireCooldown = 0.5
               updateViewmodelForWeapon(proj.owner.viewmodel, newWpn)
+              if (proj.owner === player1) soundManager.weaponSwitch()
             }
 
             killCamActive = true
@@ -1567,6 +2100,7 @@ sensVal.textContent = sensSlider.value + '%'
 
 volumeSlider.addEventListener('input', () => {
   settings.masterVolume = parseInt(volumeSlider.value) / 100
+  soundManager.setVolume(settings.masterVolume)
   volumeVal.textContent = volumeSlider.value + '%'
 })
 
@@ -1761,6 +2295,7 @@ function triggerScreamer() {
   if (screamerActive || gameOver || killCamActive || settings.masterVolume <= 0) return
   screamerActive = true
   screamerTimer = 0
+  soundManager.screamer()
 
   const faceIdx = Math.floor(Math.random() * screamerFaces.length)
   const face = screamerFaces[faceIdx]
@@ -1886,6 +2421,9 @@ function updateUI() {
 function showWin(text: string) {
   winMsg.textContent = text
   winMsg.style.display = 'flex'
+  if (text.includes('Victoire')) soundManager.victory()
+  else soundManager.defeat()
+  soundManager.stopAmbience()
   const winner = text.includes('Victoire') ? player1 : player2
   spawnVictoryRocket(winner.x, winner.z)
   setTimeout(() => spawnVictoryRocket(winner.x + 4, winner.z - 3), 500)
@@ -1946,6 +2484,7 @@ function updateFireworks(dt: number) {
 
       if (fw.y > 25 || fw.age > 1.8) {
         fw.phase = 'explode'
+        soundManager.explosion()
         if (fw.mesh) {
           scene.remove(fw.mesh)
           fw.mesh.geometry.dispose()
@@ -2256,6 +2795,7 @@ function handleNetMessage(msg: NetMessage) {
 
     case 'shoot': {
       // Visual-only: spawn bullet from remote player
+      soundManager.gunshotRemote(msg.weapon)
       const dir = new THREE.Vector3(msg.dirX, msg.dirY, msg.dirZ)
       const origin = new THREE.Vector3(msg.originX, msg.originY, msg.originZ)
       const wpn = WEAPONS[msg.weapon]
@@ -2293,6 +2833,7 @@ function handleNetMessage(msg: NetMessage) {
 
     case 'hit': {
       // Remote says they hit us — apply damage
+      soundManager.takeDamage()
       player1.hp -= msg.damage
       // Flash red
       player1.body.children.forEach(child => {
@@ -2306,6 +2847,7 @@ function handleNetMessage(msg: NetMessage) {
       if (player1.hp <= 0) {
         player1.hp = 0
         player1.isDead = true
+        soundManager.death()
         setKillfeed('Ennemi', P2_COLOR, 'Vous', P1_COLOR, WEAPONS[msg.weaponLevel].name, false)
         // Send kill confirmation to remote
         sendNet({ type: 'kill', killerWeaponLevel: msg.weaponLevel })
@@ -2320,6 +2862,7 @@ function handleNetMessage(msg: NetMessage) {
 
     case 'kill': {
       // We killed the remote player — weapon progression
+      soundManager.kill()
       setKillfeed('Vous', P1_COLOR, 'Ennemi', P2_COLOR, WEAPONS[player1.weaponLevel].name, false)
       player1.weaponLevel++
       if (player1.weaponLevel >= WEAPONS.length) {
@@ -2331,6 +2874,7 @@ function handleNetMessage(msg: NetMessage) {
         player1.isReloading = false
         player1.fireCooldown = 0.5
         updateViewmodelForWeapon(player1.viewmodel, newWpn)
+        soundManager.weaponSwitch()
       }
       // Activate kill cam — we are the killer
       killCamActive = true
@@ -2477,6 +3021,7 @@ function startGame(mode: GameMode) {
   // Blur any focused button then auto-request pointer lock
   ;(document.activeElement as HTMLElement)?.blur()
   clock.getDelta() // reset clock
+  soundManager.startAmbience()
   if (!animating) { animating = true; animate() }
   setTimeout(() => renderer.domElement.requestPointerLock(), 100)
 }
@@ -2573,13 +3118,15 @@ function setupConnection() {
   })
 }
 
-btnSolo.addEventListener('click', () => startGame('solo'))
-btnCreate.addEventListener('click', createRoom)
+btnSolo.addEventListener('click', () => { soundManager.uiClick(); startGame('solo') })
+btnCreate.addEventListener('click', () => { soundManager.uiClick(); createRoom() })
 btnJoin.addEventListener('click', () => {
+  soundManager.uiClick()
   joinForm.style.display = 'flex'
   roomInput.focus()
 })
 btnConnect.addEventListener('click', () => {
+  soundManager.uiClick()
   const code = roomInput.value.trim()
   if (code.length < 4) {
     lobbyStatus.textContent = 'Code trop court'

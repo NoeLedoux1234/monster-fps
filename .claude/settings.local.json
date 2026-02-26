@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(head:*)",
+      "Bash(cd \"C:\\\\Users\\\\quent\\\\OneDrive\\\\Documents\\\\ECV\\\\threejs\\\\monster-fps\" && npx tsc --noEmit 2>&1)",
+      "Bash(tail:*)",
+      "Bash(cd \"C:\\\\Users\\\\quent\\\\OneDrive\\\\Documents\\\\ECV\\\\threejs\\\\monster-fps\" && git add src/main.ts && git rebase --continue 2>&1)",
+      "Bash(cd \"C:\\\\Users\\\\quent\\\\OneDrive\\\\Documents\\\\ECV\\\\threejs\\\\monster-fps\" && git add -A && git rebase --continue 2>&1)"
+    ]
+  }
+}
