@@ -53,6 +53,36 @@ body {
   margin-top: -12px;
 }
 
+#map-select {
+  display: flex;
+  gap: 8px;
+}
+
+.map-btn {
+  padding: 10px 24px;
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #888;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.map-btn:hover {
+  color: #ccc;
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.map-btn.selected {
+  border-color: #ff4400;
+  color: #fff;
+  background: rgba(255, 68, 0, 0.15);
+}
+
 #lobby-buttons {
   display: flex;
   gap: 12px;

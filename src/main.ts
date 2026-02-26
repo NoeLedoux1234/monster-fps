@@ -46,12 +46,25 @@ let remoteState: NetState | null = null
 let netSendTimer = 0
 let gameStarted = false
 
-// --- Scene (horror) ---
+// --- Scene ---
+type MapTheme = 'dark' | 'light'
+let selectedMap: MapTheme = 'dark'
+
 const scene = new THREE.Scene()
 scene.background = new THREE.Color(0x020206)
 scene.fog = new THREE.Fog(0x020206, 6, 32)
 
-scene.add(new THREE.AmbientLight(0x0a0a18, 0.08))
+const ambientLight = new THREE.AmbientLight(0x0a0a18, 0.08)
+scene.add(ambientLight)
+
+const sunLight = new THREE.DirectionalLight(0xfffbe8, 0)
+sunLight.position.set(15, 30, 10)
+sunLight.castShadow = true
+sunLight.shadow.mapSize.set(2048, 2048)
+sunLight.shadow.camera.left = -35; sunLight.shadow.camera.right = 35
+sunLight.shadow.camera.top = 25; sunLight.shadow.camera.bottom = -25
+sunLight.shadow.camera.near = 1; sunLight.shadow.camera.far = 80
+scene.add(sunLight)
 
 const renderer = new THREE.WebGLRenderer({ antialias: true })
 renderer.setSize(window.innerWidth, window.innerHeight)
@@ -2331,6 +2344,37 @@ uiDiv.style.display = 'none'
 legend.style.display = 'none'
 renderer.domElement.style.display = 'none'
 
+function applyMapTheme(theme: MapTheme) {
+  if (theme === 'light') {
+    scene.background = new THREE.Color(0x87CEEB)
+    scene.fog = new THREE.Fog(0x87CEEB, 40, 120)
+    ambientLight.color.setHex(0xffffff)
+    ambientLight.intensity = 0.6
+    sunLight.intensity = 1.2
+    flashlight.intensity = 0
+    for (const pl of flickerLights) pl.intensity = 0.05
+  } else {
+    scene.background = new THREE.Color(0x020206)
+    scene.fog = new THREE.Fog(0x020206, 6, 32)
+    ambientLight.color.setHex(0x0a0a18)
+    ambientLight.intensity = 0.08
+    sunLight.intensity = 0
+    flashlight.intensity = 5
+    for (const pl of flickerLights) pl.intensity = 0.25
+  }
+}
+
+const btnMapDark = document.getElementById('btn-map-dark')!
+const btnMapLight = document.getElementById('btn-map-light')!
+
+function updateMapButtons() {
+  btnMapDark.classList.toggle('selected', selectedMap === 'dark')
+  btnMapLight.classList.toggle('selected', selectedMap === 'light')
+}
+
+btnMapDark.addEventListener('click', () => { selectedMap = 'dark'; updateMapButtons() })
+btnMapLight.addEventListener('click', () => { selectedMap = 'light'; updateMapButtons() })
+
 function startGame(mode: GameMode) {
   isMultiplayer = mode !== 'solo'
   gameStarted = true
@@ -2347,6 +2391,8 @@ function startGame(mode: GameMode) {
       <div>Multijoueur · Course a l'armement · Headshot = x2</div>
     `
   }
+
+  applyMapTheme(selectedMap)
 
   // Reset spawn
   const s1 = randomSpawn()
