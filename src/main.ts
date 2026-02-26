@@ -903,6 +903,7 @@ window.addEventListener('keydown', e => {
     if (gamePaused) closePauseMenu()
     return
   }
+  if (document.activeElement instanceof HTMLInputElement) return
   keys[e.code] = true
   e.preventDefault()
 })
@@ -2329,12 +2330,23 @@ function joinRoom(roomId: string) {
   peer.on('open', () => {
     conn = peer!.connect(`mfps-${roomId.toUpperCase()}`, { reliable: true })
 
+    const timeout = setTimeout(() => {
+      lobbyStatus.textContent = 'Room introuvable ou expirée'
+      btnConnect.textContent = 'Connecter'
+      conn?.close()
+      conn = null
+      peer?.destroy()
+      peer = null
+    }, 10000)
+
     conn.on('open', () => {
+      clearTimeout(timeout)
       setupConnection()
       startGame('guest')
     })
 
     conn.on('error', (err: Error) => {
+      clearTimeout(timeout)
       lobbyStatus.textContent = `Erreur: ${err.message}`
       btnConnect.textContent = 'Connecter'
     })
