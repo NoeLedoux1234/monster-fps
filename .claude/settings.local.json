@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(head:*)",
+      "Bash(cd \"C:\\\\Users\\\\quent\\\\OneDrive\\\\Documents\\\\ECV\\\\threejs\\\\monster-fps\" && npx tsc --noEmit 2>&1)",
+      "Bash(tail:*)"
+    ]
+  }
+}
