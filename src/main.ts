@@ -58,6 +58,7 @@ interface AvatarConfig {
   hornStyle: HornStyle
   facePattern: FacePattern
   hat: HatStyle
+  customTexture: string // data URL of uploaded PNG, empty = none
 }
 
 let peer: Peer | null = null
@@ -75,6 +76,7 @@ const DEFAULT_P1_CONFIG: AvatarConfig = {
   hornStyle: 'short',
   facePattern: 'none',
   hat: 'none',
+  customTexture: '',
 }
 
 const DEFAULT_P2_CONFIG: AvatarConfig = {
@@ -84,6 +86,7 @@ const DEFAULT_P2_CONFIG: AvatarConfig = {
   hornStyle: 'short',
   facePattern: 'none',
   hat: 'none',
+  customTexture: '',
 }
 
 const AVATAR_STORAGE_KEY = 'monster-fps-avatar'
@@ -1243,11 +1246,22 @@ function createAvatar(config: AvatarConfig, layerNum: number, targetScene?: THRE
   function legMat() { const m = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.95 }); originalColors.set(m, 0x1a1a1a); return m }
 
   // --- Round head ---
-  const faceTex = createFaceTexture(config.facePattern, skinColor)
-  const headMat = faceTex
-    ? new THREE.MeshStandardMaterial({ map: faceTex, roughness: 0.95 })
-    : skin()
-  if (faceTex) originalColors.set(headMat as THREE.MeshStandardMaterial, skinColor)
+  let headMat: THREE.MeshStandardMaterial
+  if (config.customTexture) {
+    const img = new Image()
+    img.src = config.customTexture
+    const tex = new THREE.Texture(img)
+    img.onload = () => { tex.needsUpdate = true }
+    if (img.complete) tex.needsUpdate = true
+    headMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95 })
+    originalColors.set(headMat, skinColor)
+  } else {
+    const faceTex = createFaceTexture(config.facePattern, skinColor)
+    headMat = faceTex
+      ? new THREE.MeshStandardMaterial({ map: faceTex, roughness: 0.95 })
+      : skin()
+    if (faceTex) originalColors.set(headMat, skinColor)
+  }
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.25, 16, 16), headMat)
   head.position.y = 1.52; head.name = 'head'; group.add(head)
 
@@ -3366,11 +3380,98 @@ function populateItemPanel(panelId: string, items: { value: string; label: strin
   }
 }
 
+function populateFacePanel() {
+  const panel = document.getElementById('tp-face')!
+  panel.innerHTML = ''
+
+  // Upload section
+  const uploadRow = document.createElement('div')
+  uploadRow.className = 'upload-row'
+
+  const uploadBtn = document.createElement('button')
+  uploadBtn.className = 'item-btn upload-btn'
+  uploadBtn.textContent = p1Config.customTexture ? 'Changer image' : 'Importer PNG'
+  uploadRow.appendChild(uploadBtn)
+
+  if (p1Config.customTexture) {
+    const preview = document.createElement('img')
+    preview.className = 'upload-preview'
+    preview.src = p1Config.customTexture
+    uploadRow.appendChild(preview)
+
+    const removeBtn = document.createElement('button')
+    removeBtn.className = 'item-btn danger-btn'
+    removeBtn.textContent = 'X'
+    removeBtn.title = 'Supprimer image'
+    removeBtn.addEventListener('click', () => {
+      p1Config.customTexture = ''
+      buildPreviewAvatar()
+      populateFacePanel()
+    })
+    uploadRow.appendChild(removeBtn)
+  }
+
+  const fileInput = document.createElement('input')
+  fileInput.type = 'file'
+  fileInput.accept = 'image/png,image/jpeg,image/webp'
+  fileInput.style.display = 'none'
+
+  uploadBtn.addEventListener('click', () => fileInput.click())
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      // Resize to 256x256 max for performance
+      const img = new Image()
+      img.onload = () => {
+        const c = document.createElement('canvas')
+        const size = 256
+        c.width = size; c.height = size
+        const ctx = c.getContext('2d')!
+        ctx.drawImage(img, 0, 0, size, size)
+        p1Config.customTexture = c.toDataURL('image/png')
+        p1Config.facePattern = 'none'
+        buildPreviewAvatar()
+        populateFacePanel()
+      }
+      img.src = reader.result as string
+    }
+    reader.readAsDataURL(file)
+  })
+  panel.appendChild(fileInput)
+  panel.appendChild(uploadRow)
+
+  // Separator
+  const sep = document.createElement('div')
+  sep.className = 'panel-separator'
+  sep.textContent = 'Motifs'
+  panel.appendChild(sep)
+
+  // Pattern buttons
+  for (const item of FACE_PATTERNS) {
+    const btn = document.createElement('button')
+    btn.className = 'item-btn'
+    btn.textContent = item.label
+    if (!p1Config.customTexture && p1Config.facePattern === item.value) btn.classList.add('selected')
+    btn.addEventListener('click', () => {
+      p1Config.facePattern = item.value
+      p1Config.customTexture = ''
+      panel.querySelectorAll('.item-btn:not(.upload-btn):not(.danger-btn)').forEach(b => b.classList.remove('selected'))
+      btn.classList.add('selected')
+      buildPreviewAvatar()
+      // Update upload row
+      populateFacePanel()
+    })
+    panel.appendChild(btn)
+  }
+}
+
 function updateCustomizeUI() {
   populateColorPanel('tp-skin', SKIN_COLORS, 'skinColor')
   populateColorPanel('tp-eyes', EYE_COLORS, 'eyeColor')
   populateColorPanel('tp-body', BODY_COLORS, 'bodyColor')
-  populateItemPanel('tp-face', FACE_PATTERNS, 'facePattern')
+  populateFacePanel()
   populateItemPanel('tp-horns', HORN_STYLES, 'hornStyle')
   populateItemPanel('tp-hat', HAT_STYLES, 'hat')
 }

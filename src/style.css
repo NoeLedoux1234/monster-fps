@@ -674,3 +674,43 @@ body {
   color: #fff;
   background: rgba(255, 68, 0, 0.12);
 }
+
+/* ===== Upload & face panel ===== */
+.upload-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.upload-preview {
+  width: 42px;
+  height: 42px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  object-fit: cover;
+}
+
+.danger-btn {
+  border-color: rgba(231, 76, 60, 0.3) !important;
+  color: #e74c3c !important;
+  min-width: 32px;
+  padding: 6px 10px !important;
+}
+
+.danger-btn:hover {
+  border-color: #e74c3c !important;
+  color: #fff !important;
+  background: rgba(231, 76, 60, 0.15) !important;
+}
+
+.panel-separator {
+  width: 100%;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.3);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 8px;
+  margin-top: 4px;
+}
