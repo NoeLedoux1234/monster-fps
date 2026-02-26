@@ -1248,11 +1248,26 @@ function createAvatar(config: AvatarConfig, layerNum: number, targetScene?: THRE
   // --- Round head ---
   let headMat: THREE.MeshStandardMaterial
   if (config.customTexture) {
+    // Build equirectangular canvas so the image sits on the front face
+    const cw = 512, ch = 256
+    const c = document.createElement('canvas')
+    c.width = cw; c.height = ch
+    const ctx = c.getContext('2d')!
+    // Fill with skin color
+    const sr = (skinColor >> 16) & 0xff, sg = (skinColor >> 8) & 0xff, sb = skinColor & 0xff
+    ctx.fillStyle = `rgb(${sr},${sg},${sb})`
+    ctx.fillRect(0, 0, cw, ch)
+    const tex = new THREE.CanvasTexture(c)
     const img = new Image()
+    const drawOnCanvas = () => {
+      // Center image on front face (u=0.5, v=0.5)
+      const s = 180
+      ctx.drawImage(img, (cw - s) / 2, (ch - s) / 2, s, s)
+      tex.needsUpdate = true
+    }
+    img.onload = drawOnCanvas
     img.src = config.customTexture
-    const tex = new THREE.Texture(img)
-    img.onload = () => { tex.needsUpdate = true }
-    if (img.complete) tex.needsUpdate = true
+    if (img.complete) drawOnCanvas()
     headMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95 })
     originalColors.set(headMat, skinColor)
   } else {
