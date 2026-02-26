@@ -1407,6 +1407,12 @@ const killfeedEl = document.createElement('div')
 killfeedEl.id = 'killfeed'
 document.body.appendChild(killfeedEl)
 
+const netStatusEl = document.createElement('div')
+netStatusEl.id = 'net-status'
+netStatusEl.style.cssText = 'position:fixed;top:8px;right:8px;color:#fff;font:12px monospace;background:rgba(0,0,0,0.6);padding:4px 8px;border-radius:4px;display:none;z-index:100'
+document.body.appendChild(netStatusEl)
+let lastNetReceive = 0
+
 const legend = document.createElement('div')
 legend.id = 'legend'
 legend.innerHTML = `
@@ -1756,6 +1762,24 @@ function updateUI() {
   } else {
     killfeedEl.style.opacity = '0'
   }
+
+  if (isMultiplayer) {
+    netStatusEl.style.display = 'block'
+    const ago = performance.now() - lastNetReceive
+    const connected = conn?.open ?? false
+    if (!connected) {
+      netStatusEl.textContent = 'Deconnecte'
+      netStatusEl.style.color = '#e74c3c'
+    } else if (ago > 2000) {
+      netStatusEl.textContent = `Pas de signal (${(ago / 1000).toFixed(0)}s)`
+      netStatusEl.style.color = '#f39c12'
+    } else {
+      netStatusEl.textContent = `En ligne · ${Math.round(ago)}ms`
+      netStatusEl.style.color = '#2ecc71'
+    }
+  } else {
+    netStatusEl.style.display = 'none'
+  }
 }
 
 function showWin(text: string) {
@@ -2091,9 +2115,22 @@ function sendLocalState() {
 
 function updateRemotePlayer(p: PlayerState, dt: number) {
   if (!remoteState) return
-  p.x += (remoteState.x - p.x) * 15 * dt
-  p.z += (remoteState.z - p.z) * 15 * dt
-  p.y += (remoteState.y - p.y) * 15 * dt
+  const dx = remoteState.x - p.x
+  const dz = remoteState.z - p.z
+  const dy = remoteState.y - p.y
+  const dist = Math.sqrt(dx * dx + dz * dz + dy * dy)
+
+  if (dist > 8) {
+    // Snap if too far (respawn, first sync, etc.)
+    p.x = remoteState.x
+    p.z = remoteState.z
+    p.y = remoteState.y
+  } else {
+    const t = 1 - Math.pow(0.00001, dt)
+    p.x += dx * t
+    p.z += dz * t
+    p.y += dy * t
+  }
   p.angle = remoteState.angle
   p.pitch = remoteState.pitch
   p.hp = remoteState.hp
@@ -2108,6 +2145,7 @@ function handleNetMessage(msg: NetMessage) {
   switch (msg.type) {
     case 'state':
       remoteState = msg
+      lastNetReceive = performance.now()
       // Sync weapon viewmodel if level changed
       if (msg.weaponLevel !== player2.weaponLevel) {
         player2.weaponLevel = msg.weaponLevel
